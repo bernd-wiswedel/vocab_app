@@ -16,17 +16,20 @@ def _fetch_data_from_google_sheet(csv_url, sheet_name):
     # Read the CSV into a DataFrame
     df = pd.read_csv(csv_url)
     
-    # Process the data: ignore the second row and fill up missing category values
-    if len(df) > 2:
+    # Replace NaN values with empty strings
+    df.fillna('', inplace=True)
+    
+    # Process the data: ignore the first row and fill up missing category values
+    if len(df) > 1:
         headers = df.columns.tolist()
-        data_rows = df.iloc[2:].to_dict(orient='records')  # Skip the first two rows
+        data_rows = df.iloc[1:].to_dict(orient='records')  # Skip the first row (header)
         filled_data = []
         previous_category = None
 
         for row in data_rows:
             row_dict = {headers[i]: row[headers[i]] for i in range(len(headers))}
             row_dict[COL_NAME_LANGUAGE] = sheet_name
-            if not row_dict[COL_NAME_CATEGORY] and previous_category:
+            if row_dict[COL_NAME_CATEGORY] == '' and previous_category:
                 row_dict[COL_NAME_CATEGORY] = previous_category
             previous_category = row_dict[COL_NAME_CATEGORY]
             filled_data.append(row_dict)

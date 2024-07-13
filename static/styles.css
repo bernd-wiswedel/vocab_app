@@ -17,7 +17,7 @@ label {
     margin-bottom: 5px;
 }
 
-select, button, input[type="text"] {
+select, input[type="text"] {
     width: 100%;
     padding: 10px;
     margin-bottom: 20px;
@@ -53,7 +53,7 @@ a:hover {
 
 /* Layout for buttons */
 .button-container {
-    text-align: center; /* Center the buttons */
+    text-align: left; /* Align the buttons to the left */
     margin-bottom: 20px;
 }
 
@@ -62,13 +62,43 @@ a:hover {
     margin: 0 10px 0 0; /* Space between buttons */
 }
 
+.button-container button {
+    width: auto; /* Make buttons fit their content */
+    padding: 10px 20px; /* Add some padding */
+    font-size: 16px; /* Ensure consistent font size */
+}
+
+.action-buttons {
+    text-align: center; /* Center the buttons */
+    margin: 20px 0; /* Add margin between buttons */
+}
+
+.action-buttons form {
+    display: inline-block;
+    margin: 0 10px; /* Space between buttons */
+}
+
+.action-buttons button {
+    width: auto; /* Make buttons fit their content */
+    padding: 10px 20px; /* Add some padding */
+    font-size: 16px; /* Ensure consistent font size */
+    background-color: #007bff; /* Button background color */
+    color: white; /* Button text color */
+    border: none; /* Remove border */
+    cursor: pointer; /* Change cursor to pointer */
+}
+
+.action-buttons button:hover {
+    background-color: #0056b3; /* Darken button on hover */
+}
+
 /* Content container for test.html */
 .content-container {
     width: 100%;
     max-width: 600px;
     height: 150px; /* Fixed height for the container */
-    margin: 0 auto 20px; /* Centering and spacing */
     padding: 10px;
+    margin-bottom: 20px; /* Add margin between boxes */
     border: 1px solid #ddd;
     background-color: #fff;
     overflow: hidden;
@@ -77,6 +107,13 @@ a:hover {
 
 .content-container p {
     margin: 10px 0;
+}
+
+/* New parent container */
+.wrapper-container {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto 20px; /* Centering and spacing */
 }
 
 /* Hidden and shown classes for conditional display */

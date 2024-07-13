@@ -8,30 +8,32 @@
 </head>
 <body>
     <h1>Testen</h1>
-    <div class="content-container">
-        <p><strong>Begriff:</strong> {{ current_data[term_key] }}</p>
-        <div id="translation" class="{% if show_translation %}shown{% else %}hidden{% endif %}">
-            <p><strong>Übersetzung:</strong> {{ current_data[translation_key] }}</p>
-            <p><strong>Kommentar:</strong> {{ current_data[comment_key] }}</p>
+    <div class="wrapper-container">
+        <div class="content-container">
+            <p><strong>Begriff:</strong> {{ current_data[term_key] }}</p>
+            <div id="translation" class="{% if show_translation %}shown{% else %}hidden{% endif %}">
+                <p><strong>Übersetzung:</strong> {{ current_data[translation_key] }}</p>
+                <p><strong>Kommentar:</strong> {{ current_data[comment_key] }}</p>
+            </div>
         </div>
-    </div>
-    <div class="button-container">
-        <div id="translation-button" class="{% if show_translation %}hidden{% else %}shown{% endif %}">
-            <form action="/show_translation" method="post">
-                <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
-                <button type="submit">Übersetzung</button>
-            </form>
+        <div class="button-container">
+            <div id="translation-button" class="{% if show_translation %}hidden{% else %}shown{% endif %}">
+                <form action="/show_translation" method="post">
+                    <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
+                    <button type="submit">Übersetzung</button>
+                </form>
+            </div>
+            <div id="answer-buttons" class="{% if show_translation %}shown{% else %}hidden{% endif %}">
+                <form action="/check_answer" method="post" style="display:inline;">
+                    <button type="submit" name="answer_correct" value="Richtig">Richtig</button>
+                    <button type="submit" name="answer_correct" value="Falsch">Falsch</button>
+                </form>
+            </div>
         </div>
-        <div id="answer-buttons" class="{% if show_translation %}shown{% else %}hidden{% endif %}">
-            <form action="/check_answer" method="post" style="display:inline;">
-                <button type="submit" name="answer_correct" value="Richtig">Richtig</button>
-                <button type="submit" name="answer_correct" value="Falsch">Falsch</button>
-            </form>
+        <div>
+            <p><strong>Richtig:</strong> {{ correct_count }}</p>
+            <p><strong>Falsch:</strong> {{ wrong_count }}</p>
         </div>
-    </div>
-    <div>
-        <p><strong>Richtig:</strong> {{ correct_count }}</p>
-        <p><strong>Falsch:</strong> {{ wrong_count }}</p>
     </div>
     <a href="/">Zurück zur Startseite</a>
     <br>

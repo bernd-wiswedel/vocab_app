@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
-from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
+import pandas as pd
 import random
 import json
+from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
 
 app = Flask(__name__)
 
@@ -17,7 +18,7 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
-        categories = sorted(list(set(item[COL_NAME_CATEGORY] for item in vocab_data if item[COL_NAME_LANGUAGE] == language)))
+        categories = sorted(list(set(str(item[COL_NAME_CATEGORY]) for item in vocab_data if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY]))))
     else:
         categories = []
     return jsonify(categories=categories)
