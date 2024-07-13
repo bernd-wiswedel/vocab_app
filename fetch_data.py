@@ -16,8 +16,8 @@ def _fetch_data_from_google_sheet(csv_url, sheet_name):
     # Read the CSV into a DataFrame
     df = pd.read_csv(csv_url)
     
-    # Replace NaN values with empty strings
-    df.fillna('', inplace=True)
+    # Ensure all columns are strings to avoid dtype issues
+    df = df.astype(str)
     
     # Process the data: ignore the first row and fill up missing category values
     if len(df) > 1:

@@ -2,9 +2,11 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 import pandas as pd
 import random
 import json
+import os
 from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
 
 # Load data from public Google Sheets
 vocab_data = fetch_data()
@@ -93,5 +95,4 @@ def result():
     return render_template('result.html', correct=session['correct_answers'], wrong=session['wrong_answers'])
 
 if __name__ == '__main__':
-    app.secret_key = 'your_secret_key'
     app.run(host='0.0.0.0', port=5000)
