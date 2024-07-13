@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jakobs WortSpaß - Ergebnisse</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h1>Ergebnisse</h1>
+    <div>
+        <p><strong>Richtig:</strong> {{ correct }}</p>
+        <p><strong>Falsch:</strong> {{ wrong }}</p>
+    </div>
+    <a href="/">Zurück zur Startseite</a>
+</body>
+</html>

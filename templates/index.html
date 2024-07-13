@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jakobs WortSpaß</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script>
+        function updateCategories() {
+            const language = document.getElementById('language').value;
+            fetch(`/get_categories?language=${language}`)
+                .then(response => response.json())
+                .then(data => {
+                    const categoriesSelect = document.getElementById('categories');
+                    categoriesSelect.innerHTML = '';
+                    data.categories.forEach(category => {
+                        const option = document.createElement('option');
+                        option.value = category;
+                        option.textContent = category;
+                        categoriesSelect.appendChild(option);
+                    });
+                });
+        }
+
+        function saveFormData() {
+            const language = document.getElementById('language').value;
+            const categories = Array.from(document.getElementById('categories').selectedOptions).map(option => option.value);
+            sessionStorage.setItem('language', language);
+            sessionStorage.setItem('categories', JSON.stringify(categories));
+        }
+
+        function loadFormData() {
+            const language = sessionStorage.getItem('language');
+            const categories = JSON.parse(sessionStorage.getItem('categories'));
+            if (language) {
+                document.getElementById('language').value = language;
+                updateCategories();
+                setTimeout(() => { // Wait for categories to be populated
+                    categories.forEach(category => {
+                        const option = document.querySelector(`#categories option[value='${category}']`);
+                        if (option) {
+                            option.selected = true;
+                        }
+                    });
+                }, 500);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFormData();
+            document.querySelectorAll('form').forEach(form => {
+                form.addEventListener('submit', function(event) {
+                    saveFormData();
+                    const language = document.getElementById('language').value;
+                    const categories = Array.from(document.getElementById('categories').selectedOptions).map(option => option.value);
+                    this.querySelector('input[name="language"]').value = language;
+                    this.querySelector('input[name="categories"]').value = categories.join(',');
+                });
+            });
+        });
+    </script>
+</head>
+<body>
+    <h1>Jakobs WortSpaß</h1>
+    
+    <!-- Language Selection -->
+    <div>
+        <label for="language">Sprache auswählen:</label>
+        <select name="language" id="language" onchange="updateCategories()">
+            <option value="" disabled selected>Sprache wählen</option>
+            {% for language in languages %}
+                <option value="{{ language }}">{{ language }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Category Selection -->
+    <div>
+        <label for="categories">Kategorien auswählen:</label>
+        <select name="categories" id="categories" multiple>
+            <!-- Categories will be populated by JavaScript based on selected language -->
+        </select>
+    </div>
+
+    <!-- Practice and Test Buttons -->
+    <div>
+        <form action="/practice" method="post" style="display:inline;">
+            <input type="hidden" name="language" id="practice_language">
+            <input type="hidden" name="categories" id="practice_categories">
+            <button type="submit">Üben</button>
+        </form>
+        <form action="/test" method="post" style="display:inline;">
+            <input type="hidden" name="language" id="test_language">
+            <input type="hidden" name="categories" id="test_categories">
+            <button type="submit">Testen</button>
+        </form>
+    </div>
+</body>
+</html>

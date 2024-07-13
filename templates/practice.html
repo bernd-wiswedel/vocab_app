@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jakobs WortSpaß - Üben</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <h1>Üben</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Begriff</th>
+                <th>Kommentar</th>
+                <th>Übersetzung</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in vocab_data %}
+            <tr>
+                <td>{{ item[col_name_term] }}</td>
+                <td>{{ item[col_name_comment] }}</td>
+                <td>{{ item[col_name_translation] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="/">Zurück zur Startseite</a>
+</body>
+</html>
