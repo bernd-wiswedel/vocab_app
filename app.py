@@ -25,6 +25,12 @@ def get_categories():
         categories = []
     return jsonify(categories=categories)
 
+@app.route('/reload_data', methods=['POST'])
+def reload_data():
+    global vocab_data
+    vocab_data = fetch_data()
+    return redirect(url_for('index'))
+
 @app.route('/practice', methods=['POST'])
 def practice():
     selected_language = request.form['language']

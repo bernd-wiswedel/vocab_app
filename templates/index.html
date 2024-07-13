@@ -46,6 +46,12 @@
             }
         }
 
+        function disableReloadButton() {
+            const reloadButton = document.getElementById('reload_button');
+            reloadButton.disabled = true;
+            reloadButton.innerHTML = 'Lädt...';
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             loadFormData();
             document.querySelectorAll('form').forEach(form => {
@@ -82,7 +88,7 @@
         </select>
     </div>
 
-    <!-- Practice and Test Buttons -->
+    <!-- Practice, Test and Reload Buttons -->
     <div class="action-buttons">
         <form action="/practice" method="post">
             <input type="hidden" name="language" id="practice_language">
@@ -93,6 +99,9 @@
             <input type="hidden" name="language" id="test_language">
             <input type="hidden" name="categories" id="test_categories">
             <button type="submit">Testen</button>
+        </form>
+        <form action="/reload_data" method="post" onsubmit="disableReloadButton()">
+            <button type="submit" id="reload_button">Neu Laden</button>
         </form>
     </div>
 </body>
