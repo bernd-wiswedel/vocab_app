@@ -2,41 +2,45 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Jakobs WortSpaß - Testen</title>
+    <title>Test</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
-    <h1>Testen</h1>
+    <h1>Test</h1>
+    <a href="{{ url_for('index') }}">Zurück</a>
     <div class="wrapper-container">
         <div class="content-container">
-            <p><strong>Begriff:</strong> {{ current_data[term_key] }}</p>
-            <div id="translation" class="{% if show_translation %}shown{% else %}hidden{% endif %}">
-                <p><strong>Übersetzung:</strong> {{ current_data[translation_key] }}</p>
-                <p><strong>Kommentar:</strong> {{ current_data[comment_key] }}</p>
-            </div>
+            <p><strong>{{ 'Term' if show_term else 'Deutsch' }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
+            {% if show_translation %}
+                <p><strong>{{ 'Deutsch' if show_term else 'Term' }}:</strong> {{ current_data[translation_key] if show_term else current_data[term_key] }}</p>
+                {% if current_data[language_key] == 'Latein' %}
+                    <p><strong>Zusatz:</strong> {{ current_data[comment_key] }}</p>
+                {% endif %}
+            {% endif %}
         </div>
         <div class="button-container">
-            <div id="translation-button" class="{% if show_translation %}hidden{% else %}shown{% endif %}">
-                <form action="/show_translation" method="post">
-                    <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
-                    <button type="submit">Übersetzung</button>
-                </form>
-            </div>
-            <div id="answer-buttons" class="{% if show_translation %}shown{% else %}hidden{% endif %}">
-                <form action="/check_answer" method="post" style="display:inline;">
+            {% if show_translation %}
+                <form action="{{ url_for('check_answer') }}" method="post" style="display: inline;">
                     <button type="submit" name="answer_correct" value="Richtig">Richtig</button>
                     <button type="submit" name="answer_correct" value="Falsch">Falsch</button>
                 </form>
-            </div>
-        </div>
-        <div>
-            <p><strong>Richtig:</strong> {{ correct_count }}</p>
-            <p><strong>Falsch:</strong> {{ wrong_count }}</p>
+            {% else %}
+                <form action="{{ url_for('show_translation') }}" method="post" style="display: inline;">
+                    <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
+                    <button type="submit">Übersetzung</button>
+                </form>
+                <form action="{{ url_for('switch_direction') }}" method="post" style="display: inline;">
+                    <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
+                    <button type="submit"><i class="fas fa-exchange-alt"></i> Switch</button>
+                </form>
+            {% endif %}
         </div>
     </div>
-    <a href="/">Zurück zur Startseite</a>
-    <br>
-    <a href="/result">Ergebnisse anzeigen</a> <!-- New link to show results -->
+    <div>
+        <p>Richtig: {{ correct_count }}</p>
+        <p>Falsch: {{ wrong_count }}</p>
+    </div>
 </body>
 </html>

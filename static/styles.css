@@ -125,6 +125,16 @@ a:hover {
     display: block;
 }
 
+/* Responsive table */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
+table th, table td {
+    white-space: nowrap;
+}
+
 /* Responsive styles */
 @media (max-width: 600px) {
     body {

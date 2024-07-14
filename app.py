@@ -20,10 +20,11 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
-        categories = list(dict.fromkeys(
-            str(item[COL_NAME_CATEGORY]) for item in vocab_data
+        categories_dict = {
+            str(item[COL_NAME_CATEGORY]): None for item in reversed(vocab_data)
             if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
-        ))
+        }
+        categories = list(categories_dict.keys())
     else:
         categories = []
     return jsonify(categories=categories)
@@ -46,7 +47,7 @@ def practice():
         vocab_data=filtered_data,
         language=selected_language,
         col_name_term=COL_NAME_TERM,
-        col_name_comment=COL_NAME_COMMENT,
+        col_name_comment=COL_NAME_COMMENT if selected_language != 'Englisch' else None,
         col_name_translation=COL_NAME_TRANSLATION
     )
 
@@ -59,6 +60,7 @@ def test():
     session['test_data'] = filtered_data
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
+    session['show_term'] = True
 
     return redirect(url_for('testing'))
 
@@ -68,26 +70,36 @@ def testing():
         return redirect(url_for('index'))
 
     current_data = random.choice(session['test_data'])
+    show_comment = current_data[COL_NAME_LANGUAGE] != 'Englisch'
+    show_term = session.get('show_term', True)
     return render_template('test.html',
                            current_data=current_data,
                            term_key=COL_NAME_TERM,
-                           comment_key=COL_NAME_COMMENT,
+                           language_key=COL_NAME_LANGUAGE,
+                           comment_key=COL_NAME_COMMENT if show_comment else None,
                            translation_key=COL_NAME_TRANSLATION,
                            correct_count=session['correct_answers'],
                            wrong_count=session['wrong_answers'],
-                           show_translation=False)
+                           show_translation=False,
+                           show_term=show_term)
 
 @app.route('/show_translation', methods=['POST'])
 def show_translation():
-    current_data = json.loads(request.form['current_data'])  # Convert JSON string back to dictionary
+    current_data_str = request.form['current_data']
+    current_data = json.loads(current_data_str)
+    
+    show_comment = current_data[COL_NAME_LANGUAGE] != 'Englisch'
+    show_term = session.get('show_term', True)
     return render_template('test.html',
                            current_data=current_data,
                            term_key=COL_NAME_TERM,
-                           comment_key=COL_NAME_COMMENT,
+                           language_key=COL_NAME_LANGUAGE,
+                           comment_key=COL_NAME_COMMENT if show_comment else None,
                            translation_key=COL_NAME_TRANSLATION,
                            correct_count=session['correct_answers'],
                            wrong_count=session['wrong_answers'],
-                           show_translation=True)
+                           show_translation=True,
+                           show_term=show_term)
 
 @app.route('/check_answer', methods=['POST'])
 def check_answer():
@@ -99,9 +111,23 @@ def check_answer():
 
     return redirect(url_for('testing'))
 
-@app.route('/result')
-def result():
-    return render_template('result.html', correct=session['correct_answers'], wrong=session['wrong_answers'])
+@app.route('/switch_direction', methods=['POST'])
+def switch_direction():
+    current_data_str = request.form['current_data']
+    current_data = json.loads(current_data_str)
+    
+    session['show_term'] = not session.get('show_term', True)
+    
+    return render_template('test.html',
+                           current_data=current_data,
+                           term_key=COL_NAME_TERM,
+                           language_key=COL_NAME_LANGUAGE,
+                           comment_key=COL_NAME_COMMENT,
+                           translation_key=COL_NAME_TRANSLATION,
+                           correct_count=session['correct_answers'],
+                           wrong_count=session['wrong_answers'],
+                           show_translation=False,
+                           show_term=session['show_term'])
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
