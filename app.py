@@ -20,7 +20,10 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
-        categories = list(set(str(item[COL_NAME_CATEGORY]) for item in vocab_data if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])))
+        categories = list(dict.fromkeys(
+            str(item[COL_NAME_CATEGORY]) for item in vocab_data
+            if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
+        ))
     else:
         categories = []
     return jsonify(categories=categories)
