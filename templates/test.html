@@ -12,12 +12,12 @@
     <a href="{{ url_for('index') }}">Zurück</a>
     <div class="wrapper-container">
         <div class="content-container">
-            <p><strong>{{ 'Latein' if current_data[language_key] == 'Latein' else 'English' if show_term else 'Deutsch' }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
+            <p><strong>{{ label_term }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
             {% if show_translation %}
-                {% if current_data[language_key] == 'Latein' %}
+                {% if comment_key %}
                     <p><strong>Zusatz:</strong> {{ current_data[comment_key] }}</p>
                 {% endif %}
-                <p><strong>{{ 'Deutsch' if show_term else 'Fremdsprache' }}:</strong> {{ current_data[translation_key] if show_term else current_data[term_key] }}</p>
+                <p><strong>{{ label_translation }}:</strong> {{ current_data[translation_key] if show_term else current_data[term_key] }}</p>
             {% endif %}
         </div>
         <div class="button-container">

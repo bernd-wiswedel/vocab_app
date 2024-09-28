@@ -11,6 +11,38 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
 # Load data from public Google Sheets
 vocab_data = fetch_data()
 
+def get_language_labels(language, show_term):
+    """
+    Utility function to determine labels for term, translation, and language based on the given language
+    and whether the term or translation is currently being shown.
+
+    :param language: The language of the current data.
+    :param show_term: Boolean indicating whether the term is being shown (True) or the translation (False).
+    :return: A dictionary with the following keys: label_language, label_translation, label_term, and show_comment.
+    """
+    if language == 'Latein':
+        label_language = 'Latein'
+        label_translation = 'Deutsch' if show_term else 'Latein'
+        label_term = 'Latein' if show_term else 'Deutsch'
+    elif language == 'Englisch':
+        label_language = 'Englisch'
+        label_translation = 'Deutsch' if show_term else 'Englisch'
+        label_term = 'Englisch' if show_term else 'Deutsch'
+    else:
+        # Add more logic here for other languages, if necessary
+        label_language = language
+        label_translation = 'Translation'
+        label_term = 'Term'
+
+    show_comment = language != 'Englisch'  # Only show comments for non-English languages
+
+    return {
+        'label_language': label_language,
+        'label_translation': label_translation,
+        'label_term': label_term,
+        'show_comment': show_comment
+    }
+
 @app.route('/')
 def index():
     languages = ['Latein', 'Englisch']
@@ -70,36 +102,54 @@ def testing():
         return redirect(url_for('index'))
 
     current_data = random.choice(session['test_data'])
-    show_comment = current_data[COL_NAME_LANGUAGE] != 'Englisch'
+    language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
-    return render_template('test.html',
-                           current_data=current_data,
-                           term_key=COL_NAME_TERM,
-                           language_key=COL_NAME_LANGUAGE,
-                           comment_key=COL_NAME_COMMENT if show_comment else None,
-                           translation_key=COL_NAME_TRANSLATION,
-                           correct_count=session['correct_answers'],
-                           wrong_count=session['wrong_answers'],
-                           show_translation=False,
-                           show_term=show_term)
+
+    # Use the utility function to get the labels and comment visibility
+    labels = get_language_labels(language, show_term)
+
+    return render_template(
+        'test.html',
+        current_data=current_data,
+        term_key=COL_NAME_TERM,
+        language_key=COL_NAME_LANGUAGE,
+        comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
+        translation_key=COL_NAME_TRANSLATION,
+        correct_count=session['correct_answers'],
+        wrong_count=session['wrong_answers'],
+        show_translation=False,
+        show_term=show_term,
+        label_language=labels['label_language'],
+        label_translation=labels['label_translation'],
+        label_term=labels['label_term']
+    )
 
 @app.route('/show_translation', methods=['POST'])
 def show_translation():
     current_data_str = request.form['current_data']
     current_data = json.loads(current_data_str)
-    
-    show_comment = current_data[COL_NAME_LANGUAGE] != 'Englisch'
+
+    language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
-    return render_template('test.html',
-                           current_data=current_data,
-                           term_key=COL_NAME_TERM,
-                           language_key=COL_NAME_LANGUAGE,
-                           comment_key=COL_NAME_COMMENT if show_comment else None,
-                           translation_key=COL_NAME_TRANSLATION,
-                           correct_count=session['correct_answers'],
-                           wrong_count=session['wrong_answers'],
-                           show_translation=True,
-                           show_term=show_term)
+
+    # Use the utility function to get the labels and comment visibility
+    labels = get_language_labels(language, show_term)
+
+    return render_template(
+        'test.html',
+        current_data=current_data,
+        term_key=COL_NAME_TERM,
+        language_key=COL_NAME_LANGUAGE,
+        comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
+        translation_key=COL_NAME_TRANSLATION,
+        correct_count=session['correct_answers'],
+        wrong_count=session['wrong_answers'],
+        show_translation=True,
+        show_term=show_term,
+        label_language=labels['label_language'],
+        label_translation=labels['label_translation'],
+        label_term=labels['label_term']
+    )
 
 @app.route('/check_answer', methods=['POST'])
 def check_answer():
@@ -115,19 +165,31 @@ def check_answer():
 def switch_direction():
     current_data_str = request.form['current_data']
     current_data = json.loads(current_data_str)
-    
+
+    # Toggle the direction (show term or show translation)
     session['show_term'] = not session.get('show_term', True)
-    
-    return render_template('test.html',
-                           current_data=current_data,
-                           term_key=COL_NAME_TERM,
-                           language_key=COL_NAME_LANGUAGE,
-                           comment_key=COL_NAME_COMMENT,
-                           translation_key=COL_NAME_TRANSLATION,
-                           correct_count=session['correct_answers'],
-                           wrong_count=session['wrong_answers'],
-                           show_translation=False,
-                           show_term=session['show_term'])
+    show_term = session['show_term']
+
+    language = current_data[COL_NAME_LANGUAGE]
+
+    # Use the utility function to get the labels and comment visibility
+    labels = get_language_labels(language, show_term)
+
+    return render_template(
+        'test.html',
+        current_data=current_data,
+        term_key=COL_NAME_TERM,
+        language_key=COL_NAME_LANGUAGE,
+        comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
+        translation_key=COL_NAME_TRANSLATION,
+        correct_count=session['correct_answers'],
+        wrong_count=session['wrong_answers'],
+        show_translation=False,
+        show_term=show_term,
+        label_language=labels['label_language'],
+        label_translation=labels['label_translation'],
+        label_term=labels['label_term']
+    )
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
