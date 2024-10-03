@@ -3,10 +3,19 @@ import pandas as pd
 import random
 import json
 import os
+from datetime import timedelta
 from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
+from flask import Flask
+from flask_session import Session
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = True
+app.config['SESSION_FILE_THRESHOLD'] = 250
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=10)
+app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
+Session(app)
 
 # Load data from public Google Sheets
 vocab_data = fetch_data()
