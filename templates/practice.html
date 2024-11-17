@@ -21,14 +21,19 @@
                 </tr>
             </thead>
             <tbody>
-                {% for item in vocab_data %}
+                {% for category, items in vocab_data.items() %}
                     <tr>
-                        <td>{{ item[col_name_term] }}</td>
-                        {% if col_name_comment %}
-                            <td>{{ item[col_name_comment] }}</td>
-                        {% endif %}
-                        <td>{{ item[col_name_translation] }}</td>
+                        <td colspan="3" class="category-header">{{ category }}</td>
                     </tr>
+                    {% for item in items %}
+                        <tr>
+                            <td>{{ item[col_name_term] }}</td>
+                            {% if col_name_comment %}
+                                <td>{{ item[col_name_comment] }}</td>
+                            {% endif %}
+                            <td>{{ item[col_name_translation] }}</td>
+                        </tr>
+                    {% endfor %}
                 {% endfor %}
             </tbody>
         </table>

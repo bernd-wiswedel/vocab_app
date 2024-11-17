@@ -135,6 +135,15 @@ table th, table td {
     white-space: nowrap;
 }
 
+table tbody tr td.category-header {
+    font-size: 18px;
+    font-weight: bold;
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-bottom: 2px solid #dee2e6;
+    text-align: left;
+}
+
 /* Responsive styles */
 @media (max-width: 600px) {
     body {

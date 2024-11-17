@@ -82,10 +82,35 @@ def practice():
     selected_categories = request.form['categories'].split(',')
 
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
-
+    # remove all keys in the item set whose name does not start with 'Unnamed'
+    filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
+    
+    # this is what filtered_data looks like:
+    # {'Fremdsprache': 'Salvē', 'Zusatz': '', 'Deutsch': 'Sei gegrüßt', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'pater', 'Zusatz': 'm.', 'Deutsch': 'der Vater', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'māter', 'Zusatz': 'f.', 'Deutsch': 'die Mutter', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'filius', 'Zusatz': 'm.', 'Deutsch': 'der Sohn', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Ampiteater', 'Sprache': 'Latein'}
+   
+    # create a transformation filter_data_grouped so that we can group the data by category
+    filtered_data_grouped = {}
+    # remove all keys in the item set whose name does not start with 'Unnamed'
+    filtered_data_grouped = {item[COL_NAME_CATEGORY]: [] for item in filtered_data}
+    for item in filtered_data:
+        filtered_data_grouped[item[COL_NAME_CATEGORY]].append(item)
+        
+    # this is what filtered_data_grouped looks like:
+    # {'Latein: Das Kapitol': [
+    #      {'Fremdsprache': 'ascendere', 'Zusatz': 'ascendō;ascendī', 'Deutsch': 'besteigen, hinaufsteigen', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'},
+    #      {'Fremdsprache': 'templum', 'Zusatz': 'templī n.', 'Deutsch': 'der Tempel', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
+    #  ],
+    #  'Latein: Salve': [
+    #      {'Fremdsprache': 'Salvē', 'Zusatz': '', 'Deutsch': 'Sei gegrüßt', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
+    #  ]}
+    
     return render_template(
         'practice.html',
-        vocab_data=filtered_data,
+        vocab_data=filtered_data_grouped,
         language=selected_language,
         col_name_term=COL_NAME_TERM,
         col_name_comment=COL_NAME_COMMENT if selected_language != 'Englisch' else None,
