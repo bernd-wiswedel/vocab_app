@@ -7,6 +7,7 @@ from datetime import timedelta
 from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
 from flask import Flask
 from flask_session import Session
+from markupsafe import escape
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
@@ -78,8 +79,8 @@ def reload_data():
 
 @app.route('/practice', methods=['POST'])
 def practice():
-    selected_language = request.form['language']
-    selected_categories = request.form['categories'].split(',')
+    selected_language = escape(request.form['language'])
+    selected_categories = [escape(category) for category in request.form['categories'].split(',')]
 
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     # remove all keys in the item set whose name does not start with 'Unnamed'
@@ -119,8 +120,8 @@ def practice():
 
 @app.route('/test', methods=['POST'])
 def test():
-    selected_language = request.form['language']
-    selected_categories = request.form['categories'].split(',')
+    selected_language = escape(request.form['language'])
+    selected_categories = [escape(category) for category in request.form['categories'].split(',')]
 
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     session['test_data'] = filtered_data
@@ -187,7 +188,7 @@ def show_translation():
 
 @app.route('/check_answer', methods=['POST'])
 def check_answer():
-    answer_correct = request.form['answer_correct'] == 'Richtig'
+    answer_correct = escape(request.form['answer_correct']) == 'Richtig'
     if answer_correct:
         session['correct_answers'] += 1
     else:
