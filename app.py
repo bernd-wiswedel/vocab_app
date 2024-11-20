@@ -19,7 +19,7 @@ app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
 Session(app)
 
 # Load data from public Google Sheets
-vocab_data = fetch_data()
+app.config['VOCAB_DATA'] = fetch_data()
 
 def get_language_labels(language, show_term):
     """
@@ -62,6 +62,7 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
+        vocab_data = app.config['VOCAB_DATA']
         categories_dict = {
             str(item[COL_NAME_CATEGORY]): None for item in reversed(vocab_data)
             if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
@@ -73,8 +74,8 @@ def get_categories():
 
 @app.route('/reload_data', methods=['POST'])
 def reload_data():
-    global vocab_data
-    vocab_data = fetch_data()
+    session.clear()
+    app.config['VOCAB_DATA'] = fetch_data()
     return redirect(url_for('index'))
 
 @app.route('/practice', methods=['POST'])
@@ -82,7 +83,7 @@ def practice():
     selected_language = escape(request.form['language'])
     selected_categories = [escape(category) for category in request.form['categories'].split(',')]
 
-    filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
+    filtered_data = [item for item in app.config['VOCAB_DATA'] if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     # remove all keys in the item set whose name does not start with 'Unnamed'
     filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
     
@@ -122,7 +123,7 @@ def practice():
 def test():
     selected_language = escape(request.form['language'])
     selected_categories = [escape(category) for category in request.form['categories'].split(',')]
-
+    vocab_data = app.config['VOCAB_DATA']
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     session['test_data'] = filtered_data
     session['correct_answers'] = 0
