@@ -6,6 +6,10 @@ body {
     background-color: #f4f4f4;
 }
 
+table tr:nth-child(even) {
+    background-color: #eaeaea;
+}
+
 h1 {
     font-size: 24px;
     text-align: center;
