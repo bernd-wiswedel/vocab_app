@@ -126,6 +126,7 @@ def test():
     vocab_data = app.config['VOCAB_DATA']
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     session['test_data'] = filtered_data
+    session['order'] = random.sample(range(len(filtered_data)), len(filtered_data))
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['show_term'] = True
@@ -137,7 +138,8 @@ def testing():
     if not session.get('test_data'):
         return redirect(url_for('index'))
 
-    current_data = random.choice(session['test_data'])
+    position = (session['correct_answers'] + session['wrong_answers']) % len(session['test_data'])
+    current_data = session['test_data'][session['order'][position]]
     language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
 
