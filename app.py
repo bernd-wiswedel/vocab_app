@@ -7,7 +7,6 @@ from datetime import timedelta
 from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
 from flask import Flask
 from flask_session import Session
-from markupsafe import escape
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
@@ -80,8 +79,8 @@ def reload_data():
 
 @app.route('/practice', methods=['POST'])
 def practice():
-    selected_language = escape(request.form['language'])
-    selected_categories = [escape(category) for category in request.form['categories'].split(',')]
+    selected_language = request.form['language']
+    selected_categories = [category for category in request.form['categories'].split(',')]
 
     filtered_data = [item for item in app.config['VOCAB_DATA'] if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     # remove all keys in the item set whose name does not start with 'Unnamed'
@@ -119,14 +118,17 @@ def practice():
         col_name_translation=COL_NAME_TRANSLATION
     )
 
+def random_order(length):
+    return random.sample(range(length), length)
+
+
 @app.route('/test', methods=['POST'])
 def test():
-    selected_language = escape(request.form['language'])
-    selected_categories = [escape(category) for category in request.form['categories'].split(',')]
+    selected_language = request.form['language']
+    selected_categories = [category for category in request.form['categories'].split(',')]
     vocab_data = app.config['VOCAB_DATA']
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     session['test_data'] = filtered_data
-    session['order'] = random.sample(range(len(filtered_data)), len(filtered_data))
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['show_term'] = True
@@ -139,6 +141,9 @@ def testing():
         return redirect(url_for('index'))
 
     position = (session['correct_answers'] + session['wrong_answers']) % len(session['test_data'])
+    if position == 0:
+        session['order'] = random_order(len(session['test_data']))
+    
     current_data = session['test_data'][session['order'][position]]
     language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
@@ -191,7 +196,7 @@ def show_translation():
 
 @app.route('/check_answer', methods=['POST'])
 def check_answer():
-    answer_correct = escape(request.form['answer_correct']) == 'Richtig'
+    answer_correct = request.form['answer_correct'] == 'Richtig'
     if answer_correct:
         session['correct_answers'] += 1
     else:
