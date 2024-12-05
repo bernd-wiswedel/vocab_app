@@ -92,7 +92,15 @@ def practice():
     # {'Fremdsprache': 'māter', 'Zusatz': 'f.', 'Deutsch': 'die Mutter', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
     # {'Fremdsprache': 'filius', 'Zusatz': 'm.', 'Deutsch': 'der Sohn', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
     # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Ampiteater', 'Sprache': 'Latein'}
-   
+
+    return _practice_on(filtered_data, selected_language, "Üben")
+
+@app.route('/review_failures')
+def review_failures():
+    return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen")
+
+    
+def _practice_on(filtered_data, selected_language, header):
     # create a transformation filter_data_grouped so that we can group the data by category
     filtered_data_grouped = {}
     # remove all keys in the item set whose name does not start with 'Unnamed'
@@ -112,6 +120,7 @@ def practice():
     return render_template(
         'practice.html',
         vocab_data=filtered_data_grouped,
+        header=header,
         language=selected_language,
         col_name_term=COL_NAME_TERM,
         col_name_comment=COL_NAME_COMMENT if selected_language != 'Englisch' else None,
@@ -132,19 +141,27 @@ def test():
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['show_term'] = True
+    session['list_of_wrong_answers'] = []
 
     return redirect(url_for('testing'))
+
+def _get_position_in_test():
+    return (session['correct_answers'] + session['wrong_answers']) % len(session['test_data'])
+
+def _get_data_at_position(position):
+    return session['test_data'][session['order'][position]]
+
 
 @app.route('/testing')
 def testing():
     if not session.get('test_data'):
         return redirect(url_for('index'))
 
-    position = (session['correct_answers'] + session['wrong_answers']) % len(session['test_data'])
+    position = _get_position_in_test()
     if position == 0:
         session['order'] = random_order(len(session['test_data']))
     
-    current_data = session['test_data'][session['order'][position]]
+    current_data = _get_data_at_position(position)
     language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
 
@@ -201,6 +218,9 @@ def check_answer():
         session['correct_answers'] += 1
     else:
         session['wrong_answers'] += 1
+        position = _get_position_in_test()
+        current_data = _get_data_at_position(position)
+        session['list_of_wrong_answers'].append(current_data)
 
     return redirect(url_for('testing'))
 
