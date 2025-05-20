@@ -91,7 +91,7 @@ def practice():
     # {'Fremdsprache': 'pater', 'Zusatz': 'm.', 'Deutsch': 'der Vater', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
     # {'Fremdsprache': 'māter', 'Zusatz': 'f.', 'Deutsch': 'die Mutter', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
     # {'Fremdsprache': 'filius', 'Zusatz': 'm.', 'Deutsch': 'der Sohn', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Ampiteater', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Amphitheater', 'Sprache': 'Latein'}
 
     return _practice_on(filtered_data, selected_language, "Üben")
 
