@@ -213,14 +213,21 @@ def show_translation():
 
 @app.route('/check_answer', methods=['POST'])
 def check_answer():
+    """Handle the user's response during testing.
+
+    Incorrect answers are logged before counters are updated.
+    """
+    # Capture the current test position before counters are modified so that
+    # the associated data can be retrieved reliably.
+    position = _get_position_in_test()
+    current_data = _get_data_at_position(position)
+
     answer_correct = request.form['answer_correct'] == 'Richtig'
     if answer_correct:
         session['correct_answers'] += 1
     else:
-        session['wrong_answers'] += 1
-        position = _get_position_in_test()
-        current_data = _get_data_at_position(position)
         session['list_of_wrong_answers'].append(current_data)
+        session['wrong_answers'] += 1
 
     return redirect(url_for('testing'))
 
