@@ -97,10 +97,10 @@ def practice():
 
 @app.route('/review_failures')
 def review_failures():
-    return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen")
+    return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen", is_error_review=True)
 
     
-def _practice_on(filtered_data, selected_language, header):
+def _practice_on(filtered_data, selected_language, header, is_error_review=False):
     # create a transformation filter_data_grouped so that we can group the data by category
     filtered_data_grouped = {}
     # remove all keys in the item set whose name does not start with 'Unnamed'
@@ -124,7 +124,8 @@ def _practice_on(filtered_data, selected_language, header):
         language=selected_language,
         col_name_term=COL_NAME_TERM,
         col_name_comment=COL_NAME_COMMENT if selected_language != 'Englisch' else None,
-        col_name_translation=COL_NAME_TRANSLATION
+        col_name_translation=COL_NAME_TRANSLATION,
+        is_error_review=is_error_review
     )
 
 def random_order(length):
@@ -138,6 +139,19 @@ def test():
     vocab_data = app.config['VOCAB_DATA']
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     session['test_data'] = filtered_data
+    session['correct_answers'] = 0
+    session['wrong_answers'] = 0
+    session['show_term'] = True
+    session['list_of_wrong_answers'] = []
+
+    return redirect(url_for('testing'))
+
+@app.route('/test_errors', methods=['POST'])
+def test_errors():
+    if not session.get('list_of_wrong_answers'):
+        return redirect(url_for('index'))
+    
+    session['test_data'] = session['list_of_wrong_answers']
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['show_term'] = True

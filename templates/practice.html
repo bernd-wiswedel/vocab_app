@@ -38,5 +38,12 @@
             </tbody>
         </table>
     </div>
+    {% if is_error_review %}
+    <div class="action-buttons">
+        <form action="/test_errors" method="post">
+            <button type="submit">Fehler neu testen</button>
+        </form>
+    </div>
+    {% endif %}
 </body>
 </html>
