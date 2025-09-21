@@ -3,10 +3,14 @@ import pandas as pd
 import random
 import json
 import os
+import hashlib
+import base64
 from datetime import timedelta
 from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
 from flask import Flask
 from flask_session import Session
+from cryptography.fernet import Fernet
+import time
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
@@ -20,7 +24,108 @@ Session(app)
 # Load data from public Google Sheets
 app.config['VOCAB_DATA'] = fetch_data()
 
-def get_language_labels(language, show_term):
+# Password protection
+LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'default_password')
+
+def is_authenticated():
+    """Check if user is authenticated"""
+    return session.get('authenticated', False)
+
+def require_auth(f):
+    """Decorator to require authentication"""
+    def decorated_function(*args, **kwargs):
+        if not is_authenticated():
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        failed_attempts = session.get('failed_attempts', 0)
+        last_attempt_time = session.get('last_attempt_time', 0)
+        
+        # Implement delay for failed attempts
+        current_time = time.time()
+        if failed_attempts > 0 and current_time - last_attempt_time < failed_attempts * 2:
+            remaining_delay = int(failed_attempts * 2 - (current_time - last_attempt_time))
+            return render_template('login.html', 
+                                 error=f'Too many failed attempts. Please wait {remaining_delay} seconds.',
+                                 delay=remaining_delay)
+        
+        if password == LOGIN_PASSWORD:
+            session['authenticated'] = True
+            session['failed_attempts'] = 0
+            return redirect(url_for('index'))
+        else:
+            session['failed_attempts'] = failed_attempts + 1
+            session['last_attempt_time'] = current_time
+            return render_template('login.html', 
+                                 error='Incorrect password. Please try again.',
+                                 delay=0)
+    
+    return render_template('login.html', error=None, delay=0)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/')
+@require_auth
+def index():
+    languages = ['Latein', 'Englisch']
+    return render_template('index.html', languages=languages)
+
+@app.route('/get_categories')
+@require_auth
+def get_categories():
+    language = request.args.get('language')
+    if language:
+        vocab_data = app.config['VOCAB_DATA']
+        categories_dict = {
+            str(item[COL_NAME_CATEGORY]): None for item in reversed(vocab_data)
+            if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
+        }
+        categories = list(categories_dict.keys())
+    else:
+        categories = []
+    return jsonify(categories=categories)
+
+@app.route('/reload_data', methods=['POST'])
+@require_auth
+def reload_data():
+    session.clear()
+    app.config['VOCAB_DATA'] = fetch_data()
+    return redirect(url_for('index'))
+
+@app.route('/practice', methods=['POST'])
+@require_auth
+def practice():
+    selected_language = request.form['language']
+    selected_categories = [category for category in request.form['categories'].split(',')]
+
+    filtered_data = [item for item in app.config['VOCAB_DATA'] if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
+    # remove all keys in the item set whose name does not start with 'Unnamed'
+    filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
+    
+    # this is what filtered_data looks like:
+    # {'Fremdsprache': 'Salvē', 'Zusatz': '', 'Deutsch': 'Sei gegrüßt', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'pater', 'Zusatz': 'm.', 'Deutsch': 'der Vater', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'māter', 'Zusatz': 'f.', 'Deutsch': 'die Mutter', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'filius', 'Zusatz': 'm.', 'Deutsch': 'der Sohn', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
+    # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Amphitheater', 'Sprache': 'Latein'}
+
+    return _practice_on(filtered_data, selected_language, "Üben")
+
+@app.route('/review_failures')
+@require_auth
+def review_failures():
+    return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen", is_error_review=True)
+
+def _get_language_labels(language, show_term):
     """
     Utility function to determine labels for term, translation, and language based on the given language
     and whether the term or translation is currently being shown.
@@ -51,54 +156,6 @@ def get_language_labels(language, show_term):
         'label_term': label_term,
         'show_comment': show_comment
     }
-
-@app.route('/')
-def index():
-    languages = ['Latein', 'Englisch']
-    return render_template('index.html', languages=languages)
-
-@app.route('/get_categories')
-def get_categories():
-    language = request.args.get('language')
-    if language:
-        vocab_data = app.config['VOCAB_DATA']
-        categories_dict = {
-            str(item[COL_NAME_CATEGORY]): None for item in reversed(vocab_data)
-            if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
-        }
-        categories = list(categories_dict.keys())
-    else:
-        categories = []
-    return jsonify(categories=categories)
-
-@app.route('/reload_data', methods=['POST'])
-def reload_data():
-    session.clear()
-    app.config['VOCAB_DATA'] = fetch_data()
-    return redirect(url_for('index'))
-
-@app.route('/practice', methods=['POST'])
-def practice():
-    selected_language = request.form['language']
-    selected_categories = [category for category in request.form['categories'].split(',')]
-
-    filtered_data = [item for item in app.config['VOCAB_DATA'] if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
-    # remove all keys in the item set whose name does not start with 'Unnamed'
-    filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
-    
-    # this is what filtered_data looks like:
-    # {'Fremdsprache': 'Salvē', 'Zusatz': '', 'Deutsch': 'Sei gegrüßt', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'pater', 'Zusatz': 'm.', 'Deutsch': 'der Vater', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'māter', 'Zusatz': 'f.', 'Deutsch': 'die Mutter', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'filius', 'Zusatz': 'm.', 'Deutsch': 'der Sohn', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Amphitheater', 'Sprache': 'Latein'}
-
-    return _practice_on(filtered_data, selected_language, "Üben")
-
-@app.route('/review_failures')
-def review_failures():
-    return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen", is_error_review=True)
-
     
 def _practice_on(filtered_data, selected_language, header, is_error_review=False):
     # create a transformation filter_data_grouped so that we can group the data by category
@@ -133,6 +190,7 @@ def random_order(length):
 
 
 @app.route('/test', methods=['POST'])
+@require_auth
 def test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
@@ -147,6 +205,7 @@ def test():
     return redirect(url_for('testing'))
 
 @app.route('/test_errors', methods=['POST'])
+@require_auth
 def test_errors():
     if not session.get('list_of_wrong_answers'):
         return redirect(url_for('index'))
@@ -167,6 +226,7 @@ def _get_data_at_position(position):
 
 
 @app.route('/testing')
+@require_auth
 def testing():
     if not session.get('test_data'):
         return redirect(url_for('index'))
@@ -180,7 +240,7 @@ def testing():
     show_term = session.get('show_term', True)
 
     # Use the utility function to get the labels and comment visibility
-    labels = get_language_labels(language, show_term)
+    labels = _get_language_labels(language, show_term)
 
     return render_template(
         'test.html',
@@ -199,6 +259,7 @@ def testing():
     )
 
 @app.route('/show_translation', methods=['POST'])
+@require_auth
 def show_translation():
     current_data_str = request.form['current_data']
     current_data = json.loads(current_data_str)
@@ -207,7 +268,7 @@ def show_translation():
     show_term = session.get('show_term', True)
 
     # Use the utility function to get the labels and comment visibility
-    labels = get_language_labels(language, show_term)
+    labels = _get_language_labels(language, show_term)
 
     return render_template(
         'test.html',
@@ -226,6 +287,7 @@ def show_translation():
     )
 
 @app.route('/check_answer', methods=['POST'])
+@require_auth
 def check_answer():
     """Handle the user's response during testing.
 
@@ -246,6 +308,7 @@ def check_answer():
     return redirect(url_for('testing'))
 
 @app.route('/switch_direction', methods=['POST'])
+@require_auth
 def switch_direction():
     current_data_str = request.form['current_data']
     current_data = json.loads(current_data_str)
@@ -257,7 +320,7 @@ def switch_direction():
     language = current_data[COL_NAME_LANGUAGE]
 
     # Use the utility function to get the labels and comment visibility
-    labels = get_language_labels(language, show_term)
+    labels = _get_language_labels(language, show_term)
 
     return render_template(
         'test.html',
