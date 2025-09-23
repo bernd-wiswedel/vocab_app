@@ -38,10 +38,23 @@
             </tbody>
         </table>
     </div>
+    <script>
+        function handleWriteScores(button) {
+            // Disable the button to prevent multiple submissions
+            button.disabled = true;
+
+            // Change button text and add a spinning icon
+            button.innerHTML = '<span class="spinner"></span> Speichern...';
+        }
+    </script>
+
     {% if is_error_review %}
     <div class="action-buttons">
         <form action="/test_errors" method="post">
             <button type="submit">Fehler neu testen</button>
+        </form>
+        <form action="/write_scores" method="post" onsubmit="handleWriteScores(this.querySelector('button'))">
+            <button type="submit">Ergebnisse in Google Sheets speichern</button>
         </form>
     </div>
     {% endif %}

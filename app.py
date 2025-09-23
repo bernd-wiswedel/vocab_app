@@ -6,7 +6,7 @@ import os
 import hashlib
 import base64
 from datetime import timedelta
-from fetch_data import fetch_data, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
+from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
 from flask import Flask
 from flask_session import Session
 from cryptography.fernet import Fernet
@@ -337,6 +337,33 @@ def switch_direction():
         label_translation=labels['label_translation'],
         label_term=labels['label_term']
     )
+
+@app.route('/write_scores', methods=['POST'])
+@require_auth
+def write_scores():
+    """Write vocabulary scores to Google Sheets"""
+    if not session.get('list_of_wrong_answers'):
+        return redirect(url_for('index'))
+    
+    try:
+        # Get the language from the first item in wrong answers
+        wrong_answers = session['list_of_wrong_answers']
+        if not wrong_answers:
+            return redirect(url_for('index'))
+            
+        language = wrong_answers[0].get(COL_NAME_LANGUAGE, 'Englisch')
+        
+        # Write the scores to the appropriate sheet
+        rows_written = write_scores_to_sheet(wrong_answers, language)
+        
+        # You could add a success message here if desired
+        # For now, just redirect back to the error review
+        return redirect(url_for('review_failures'))
+        
+    except Exception as e:
+        # Handle errors gracefully - could add flash message here
+        print(f"Error writing scores: {e}")
+        return redirect(url_for('review_failures'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
