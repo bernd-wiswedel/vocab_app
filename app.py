@@ -97,7 +97,17 @@ def get_categories():
 @app.route('/reload_data', methods=['POST'])
 @require_auth
 def reload_data():
+    # Preserve authentication and failed attempts data
+    authenticated = session.get('authenticated', False)
+    failed_attempts = session.get('failed_attempts', 0)
+    last_attempt_time = session.get('last_attempt_time', 0)
+    
     session.clear()
+    
+    session['authenticated'] = authenticated
+    session['failed_attempts'] = failed_attempts
+    session['last_attempt_time'] = last_attempt_time
+    
     app.config['VOCAB_DATA'] = fetch_data()
     return redirect(url_for('index'))
 
