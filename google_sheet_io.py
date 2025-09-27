@@ -101,12 +101,42 @@ def fetch_data():
     - 'Deutsch': The German translation
     - 'Kategorie': The category of the vocabulary term.
     - 'Sprache': The language of the vocabulary term (either 'Latein' or 'Englisch').
+    
+    Additionally, if scores exist, these fields are added:
+    - 'score_status': Status level ('red' for wrong answers)
+    - 'score_date': When the score was recorded (ISO date format: YYYY-MM-DD)
 
-    :return: A list of dictionaries containing the vocabulary data.
+    :return: A list of dictionaries containing the vocabulary data with optional score information.
     """
+    print("Fetching vocabulary data from sheets...")
     latin_data = _fetch_data_from_google_sheet(SHEET_URL_LATEIN, SHEET_NAME_LATEIN)
     english_data = _fetch_data_from_google_sheet(SHEET_URL_ENGLISH, SHEET_NAME_ENGLISH)
-    return latin_data + english_data
+    
+    # Combine vocabulary data
+    vocab_data = latin_data + english_data
+    print(f"Loaded {len(vocab_data)} vocabulary entries")
+    
+    # Fetch and merge scores
+    print("Fetching score data...")
+    scores = _fetch_scores()
+    print(f"Loaded {len(scores)} score entries")
+    
+    # Merge scores into vocabulary data
+    for item in vocab_data:
+        term = item.get(COL_NAME_TERM)
+        if term and term in scores:
+            score_info = scores[term]
+            item['score_status'] = score_info.get('status')
+            item['score_date'] = score_info.get('date')
+        else:
+            # Set default values for items without scores
+            item['score_status'] = None
+            item['score_date'] = None
+    
+    vocab_with_scores = len([item for item in vocab_data if item.get('score_status')])
+    print(f"Merged scores for {vocab_with_scores} vocabulary items")
+    
+    return vocab_data
 
 def write_scores_to_sheet(vocab_items, language='Englisch'):
     """
@@ -115,7 +145,7 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
     :param vocab_items: List of vocabulary items (dictionaries with 'Key' field)
     :param language: 'Englisch' or 'Latein' to determine which sheet tab to write to
     """
-    from datetime import datetime
+    from datetime import date
     
     # Determine which sheet to write to
     if language == 'Englisch':
@@ -145,7 +175,7 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
                     key_to_row[row[0]] = i
         
         # Prepare batch update data
-        current_time = datetime.now().isoformat(timespec='seconds')
+        current_date = date.today().isoformat()
         updates = []
         
         for item in vocab_items:
@@ -153,7 +183,7 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
             if not key:
                 continue  # Skip items without keys
                 
-            row_data = [key, 'red', current_time]
+            row_data = [key, 'red', current_date]
             
             if key in key_to_row:
                 # Update existing row
@@ -191,6 +221,59 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
     except Exception as e:
         print(f"Error writing to Google Sheets: {e}")
         raise
+
+def _fetch_scores():
+    """
+    Fetch vocabulary scores from both English and Latin score sheets.
+    Returns a dictionary mapping vocabulary terms to their score data.
+    
+    :return: Dictionary with structure {term: {'status': 'red', 'date': 'YYYY-MM-DD'}}
+    """
+    service = _get_sheets_service()
+    scores = {}
+    
+    # Define sheets to fetch from
+    score_sheets = [
+        (SCORES_SHEET_NAME_ENGLISH, 'Englisch'),
+        (SCORES_SHEET_NAME_LATEIN, 'Latein')
+    ]
+    
+    try:
+        for sheet_name, language in score_sheets:
+            try:
+                # Fetch score data from the sheet
+                result = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=f"'{sheet_name}'!A:C"
+                ).execute()
+                
+                score_data = result.get('values', [])
+                
+                # Skip header row if present, process score data
+                if len(score_data) > 1:  # Has header + data
+                    for row in score_data[1:]:  # Skip header
+                        if len(row) >= 3:  # Ensure we have term, status, date
+                            term = row[0]
+                            status = row[1] 
+                            date_value = row[2]
+                            
+                            scores[term] = {
+                                'status': status,
+                                'date': date_value,
+                                'language': language
+                            }
+                            
+                print(f"Loaded {len([s for s in scores.values() if s.get('language') == language])} scores from {language} sheet")
+                            
+            except Exception as e:
+                print(f"Warning: Could not fetch scores from {sheet_name}: {e}")
+                # Continue with other sheets even if one fails
+                
+        return scores
+        
+    except Exception as e:
+        print(f"Error fetching scores: {e}")
+        return {}  # Return empty dict on error
 
 # Keep the existing debug print for backwards compatibility
 if __name__ == "__main__":
