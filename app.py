@@ -21,11 +21,22 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=10)
 app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
 Session(app)
 
-# Load data from public Google Sheets
-app.config['VOCAB_DATA'] = fetch_data()
-
 # Password protection
 LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'default_password')
+
+def get_vocab_data():
+    """Get vocabulary data from session (assumes it's already loaded)"""
+    if 'vocab_data' not in session:
+        # This shouldn't happen if login/reload work correctly
+        raise RuntimeError("Vocabulary data not loaded. Please log in again.")
+    return session['vocab_data']
+
+def fetch_and_store_vocab_data():
+    """Fetch vocabulary data from Google Sheets and store in session"""
+    print("Fetching vocabulary data from Google Sheets...")
+    session['vocab_data'] = fetch_data()
+    print(f"Loaded {len(session['vocab_data'])} vocabulary entries.")
+    return len(session['vocab_data'])
 
 def is_authenticated():
     """Check if user is authenticated"""
@@ -58,7 +69,8 @@ def login():
         if password == LOGIN_PASSWORD:
             session['authenticated'] = True
             session['failed_attempts'] = 0
-            return redirect(url_for('index'))
+            # Redirect to loading page to fetch vocabulary data
+            return redirect(url_for('loading_data', source='login'))
         else:
             session['failed_attempts'] = failed_attempts + 1
             session['last_attempt_time'] = current_time
@@ -84,7 +96,7 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
-        vocab_data = app.config['VOCAB_DATA']
+        vocab_data = get_vocab_data()
         categories_dict = {
             str(item[COL_NAME_CATEGORY]): None for item in reversed(vocab_data)
             if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
@@ -108,8 +120,35 @@ def reload_data():
     session['failed_attempts'] = failed_attempts
     session['last_attempt_time'] = last_attempt_time
     
-    app.config['VOCAB_DATA'] = fetch_data()
-    return redirect(url_for('index'))
+    # Force reload of vocabulary data
+    if 'vocab_data' in session:
+        del session['vocab_data']
+    
+    return redirect(url_for('loading_data', source='reload'))
+
+@app.route('/loading_data')
+@require_auth
+def loading_data():
+    """Show loading page while vocabulary data is being fetched"""
+    source = request.args.get('source', 'login')  # 'login' or 'reload'
+    return render_template('loading.html', source=source)
+
+@app.route('/api/fetch_data', methods=['POST'])
+@require_auth
+def api_fetch_data():
+    """API endpoint to fetch vocabulary data and return progress"""
+    try:
+        entry_count = fetch_and_store_vocab_data()
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully loaded {entry_count} vocabulary entries.',
+            'entry_count': entry_count
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False, 
+            'message': f'Error loading data: {str(e)}'
+        }), 500
 
 @app.route('/practice', methods=['POST'])
 @require_auth
@@ -117,7 +156,7 @@ def practice():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
 
-    filtered_data = [item for item in app.config['VOCAB_DATA'] if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
+    filtered_data = [item for item in get_vocab_data() if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     # remove all keys in the item set whose name does not start with 'Unnamed'
     filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
     
@@ -204,7 +243,7 @@ def random_order(length):
 def test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
-    vocab_data = app.config['VOCAB_DATA']
+    vocab_data = get_vocab_data()
     filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
     session['test_data'] = filtered_data
     session['correct_answers'] = 0

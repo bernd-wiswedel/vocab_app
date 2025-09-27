@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Daten werden geladen... - Jakobs WortSpaß</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Jakobs WortSpaß</h1>
+    </div>
+    
+    <div class="loading-container">
+        <div id="loading-section">
+            <i class="fas fa-sync-alt loading-spinner"></i>
+            <div class="loading-message">
+                {% if source == 'reload' %}
+                    Vokabeldaten werden neu geladen...
+                {% else %}
+                    Vokabeldaten werden geladen...
+                {% endif %}
+            </div>
+            <div class="loading-details">
+                Die Daten werden von Google Sheets abgerufen.<br>
+                Dies kann einen Moment dauern.
+            </div>
+            <div id="progress-text" class="progress-text">
+                Verbindung wird aufgebaut...
+            </div>
+        </div>
+        
+        <div id="result-section" style="display: none;">
+            <div id="result-message"></div>
+            <a href="{{ url_for('index') }}" class="retry-button" id="continue-button" style="display: none;">
+                Weiter zur Hauptseite
+            </a>
+            <button class="retry-button" id="retry-button" style="display: none;" onclick="retryLoading()">
+                Erneut versuchen
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let loadingStartTime = Date.now();
+        let progressInterval;
+        
+        function updateProgress() {
+            const elapsed = Math.floor((Date.now() - loadingStartTime) / 1000);
+            document.getElementById('progress-text').textContent = 
+                `Lädt... (${elapsed}s)`;
+        }
+        
+        function showResult(success, message, entryCount = null) {
+            // Hide loading section
+            document.getElementById('loading-section').style.display = 'none';
+            
+            // Show result section
+            const resultSection = document.getElementById('result-section');
+            const resultMessage = document.getElementById('result-message');
+            
+            if (success) {
+                resultMessage.className = 'success-message';
+                resultMessage.innerHTML = `
+                    <i class="fas fa-check-circle"></i><br>
+                    ${message}
+                `;
+                document.getElementById('continue-button').style.display = 'inline-block';
+                
+                // Auto-redirect after 2 seconds
+                setTimeout(() => {
+                    window.location.href = "{{ url_for('index') }}";
+                }, 2000);
+            } else {
+                resultMessage.className = 'error-message';
+                resultMessage.innerHTML = `
+                    <i class="fas fa-exclamation-triangle"></i><br>
+                    ${message}
+                `;
+                document.getElementById('retry-button').style.display = 'inline-block';
+            }
+            
+            resultSection.style.display = 'block';
+            clearInterval(progressInterval);
+        }
+        
+        function retryLoading() {
+            // Reset UI
+            document.getElementById('loading-section').style.display = 'block';
+            document.getElementById('result-section').style.display = 'none';
+            document.getElementById('progress-text').textContent = 'Verbindung wird aufgebaut...';
+            
+            // Restart loading
+            loadingStartTime = Date.now();
+            startDataFetch();
+        }
+        
+        function startDataFetch() {
+            // Start progress counter
+            progressInterval = setInterval(updateProgress, 1000);
+            
+            // Fetch data via API
+            fetch('/api/fetch_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showResult(true, data.message, data.entry_count);
+                } else {
+                    showResult(false, data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showResult(false, 'Netzwerkfehler beim Laden der Daten. Bitte überprüfen Sie Ihre Internetverbindung.');
+            });
+        }
+        
+        // Start loading when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            startDataFetch();
+        });
+    </script>
+</body>
+</html>
