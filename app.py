@@ -6,8 +6,9 @@ import os
 import hashlib
 import base64
 from datetime import timedelta
-from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
-from level import LevelSystem, get_testable_terms
+from typing import List, Dict, Any
+from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase
+from level import LevelSystem
 from flask import Flask
 from flask_session import Session
 from cryptography.fernet import Fernet
@@ -25,21 +26,22 @@ Session(app)
 # Password protection
 LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'default_password')
 
-def get_vocab_data():
-    """Get vocabulary data from session (assumes it's already loaded)"""
+def get_vocab_data() -> VocabularyDatabase:
+    """Get vocabulary database from session (assumes it's already loaded)"""
     if 'vocab_data' not in session:
         # This shouldn't happen if login/reload work correctly
         raise RuntimeError("Vocabulary data not loaded. Please log in again.")
     return session['vocab_data']
 
-def fetch_and_store_vocab_data():
+def fetch_and_store_vocab_data() -> int:
     """Fetch vocabulary data from Google Sheets and store in session"""
     print("Fetching vocabulary data from Google Sheets...")
-    session['vocab_data'] = fetch_data()
-    print(f"Loaded {len(session['vocab_data'])} vocabulary entries.")
-    return len(session['vocab_data'])
+    vocab_db = fetch_data()  # This now returns VocabularyDatabase
+    session['vocab_data'] = vocab_db
+    print(f"Loaded {len(vocab_db.data)} vocabulary entries.")
+    return len(vocab_db.data)
 
-def is_authenticated():
+def is_authenticated() -> bool:
     """Check if user is authenticated"""
     return session.get('authenticated', False)
 
@@ -97,12 +99,9 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
-        vocab_data = get_vocab_data()
-        categories_dict = {
-            str(item[COL_NAME_CATEGORY]): None for item in reversed(vocab_data)
-            if item[COL_NAME_LANGUAGE] == language and pd.notna(item[COL_NAME_CATEGORY])
-        }
-        categories = list(categories_dict.keys())
+        vocab_db = get_vocab_data()
+        categories = list({item.vocab.category for item in vocab_db.get_by_language(language) if item.vocab.category})
+        categories.reverse()
     else:
         categories = []
     return jsonify(categories=categories)
@@ -157,16 +156,19 @@ def practice():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
 
-    filtered_data = [item for item in get_vocab_data() if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
-    # remove all keys in the item set whose name does not start with 'Unnamed'
-    filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
+    vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
     
-    # this is what filtered_data looks like:
-    # {'Fremdsprache': 'Salvē', 'Zusatz': '', 'Deutsch': 'Sei gegrüßt', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'pater', 'Zusatz': 'm.', 'Deutsch': 'der Vater', 'Kategorie': 'Latein: Salve', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'māter', 'Zusatz': 'f.', 'Deutsch': 'die Mutter', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'filius', 'Zusatz': 'm.', 'Deutsch': 'der Sohn', 'Kategorie': 'Latein: Das Kapitol', 'Sprache': 'Latein'}
-    # {'Fremdsprache': 'filia', 'Zusatz': 'f.', 'Deutsch': 'die Tochter', 'Kategorie': 'Latein: Amphitheater', 'Sprache': 'Latein'}
+    # Get filtered data using the new database methods
+    filtered_items = []
+    for category in selected_categories:
+        category_items = vocab_db.get_by_category(selected_language, category)
+        filtered_items.extend(category_items)
+    
+    # Convert to dict format for backward compatibility
+    filtered_data = [item.to_dict() for item in filtered_items]
+    
+    # Remove 'Unnamed' keys (though this shouldn't be needed with the new structure)
+    filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
 
     return _practice_on(filtered_data, selected_language, "Üben")
 
@@ -175,7 +177,33 @@ def practice():
 def review_failures():
     return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen", is_error_review=True)
 
-def _get_language_labels(language, show_term):
+def _add_status_info_to_data(current_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate status info and add it to current_data dictionary.
+    Adds 'current_status' and 'days_remaining' keys.
+    """
+    from datetime import date
+    
+    status = current_data.get('score_status', 'Red-1')
+    last_date = current_data.get('score_date')
+    
+    # Calculate days remaining until expiry
+    days_remaining = None
+    if last_date and status != 'Red-1':
+        level = LevelSystem.get_level(status)
+        if level.max_days is not None:
+            test_date = date.fromisoformat(last_date)
+            days_since_test = (date.today() - test_date).days
+            days_remaining = level.max_days - days_since_test
+            if days_remaining < 0:
+                days_remaining = 0  # Expired
+    
+    # Add calculated values to the data dictionary
+    current_data['current_status'] = status
+    current_data['days_remaining'] = days_remaining
+    return current_data
+
+def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
     """
     Utility function to determine labels for term, translation, and language based on the given language
     and whether the term or translation is currently being shown.
@@ -235,7 +263,7 @@ def _practice_on(filtered_data, selected_language, header, is_error_review=False
         is_error_review=is_error_review
     )
 
-def random_order(length):
+def random_order(length: int) -> List[int]:
     return random.sample(range(length), length)
 
 
@@ -244,15 +272,16 @@ def random_order(length):
 def test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
-    vocab_data = get_vocab_data()
+    vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
     
-    # Filter by language and category first
-    filtered_data = [item for item in vocab_data 
-                    if item[COL_NAME_CATEGORY] in selected_categories 
-                    and item[COL_NAME_LANGUAGE] == selected_language]
+    # Use the new database method to get filtered and testable terms
+    testable_items = []
+    for category in selected_categories:
+        category_items = vocab_db.get_testable_terms(language=selected_language, category=category)
+        testable_items.extend(category_items)
     
-    # Use level system to select testable terms based on urgency
-    testable_terms = get_testable_terms(filtered_data)
+    # Convert to dict format for backward compatibility with existing session logic
+    testable_terms = [item.to_dict() for item in testable_items]
     
     if not testable_terms:
         # No terms available for testing - redirect back with message
@@ -283,10 +312,10 @@ def test_errors():
 
     return redirect(url_for('testing'))
 
-def _get_position_in_test():
+def _get_position_in_test() -> int:
     return (session['correct_answers'] + session['wrong_answers']) % len(session['test_data'])
 
-def _get_data_at_position(position):
+def _get_data_at_position(position: int) -> Dict[str, Any]:
     return session['test_data'][session['order'][position]]
 
 
@@ -316,6 +345,9 @@ def testing():
 
     # Use the utility function to get the labels and comment visibility
     labels = _get_language_labels(language, show_term)
+
+    # Add status info to minimal_current_data
+    minimal_current_data = _add_status_info_to_data(minimal_current_data)
 
     return render_template(
         'test.html',
@@ -389,12 +421,12 @@ def check_answer():
                 break
         
         # Also update in vocab_data if it exists in session
-        vocab_data = session.get('vocab_data', [])
-        for item in vocab_data:
-            if item.get(COL_NAME_TERM) == term_key:
-                item['score_status'] = new_level
-                item['score_date'] = new_date
-                break
+        vocab_db = session.get('vocab_data')
+        if vocab_db:
+            # Use the database's update method
+            language = current_data.get(COL_NAME_LANGUAGE)
+            if language:
+                vocab_db.update_score(term_key, language, new_level, new_date)
 
     # Update counters and track all tested items for writing back to sheets
     if 'all_tested_items' not in session:
@@ -429,6 +461,9 @@ def switch_direction():
 
     # Use the utility function to get the labels and comment visibility
     labels = _get_language_labels(language, show_term)
+
+    # Add status info to current_data
+    current_data = _add_status_info_to_data(current_data)
 
     return render_template(
         'test.html',

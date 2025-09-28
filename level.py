@@ -84,9 +84,9 @@ class LevelSystem:
         Level("Red-2", min_days=0, max_days=7),
         Level("Red-3", min_days=0, max_days=7),
         Level("Red-4", min_days=0, max_days=7),
-        Level("Yellow-1", min_days=0, max_days=7),
-        Level("Yellow-2", min_days=0, max_days=7),
-        Level("Yellow-3", min_days=0, max_days=7),
+        Level("Yellow-1", min_days=4, max_days=7),
+        Level("Yellow-2", min_days=4, max_days=7),
+        Level("Yellow-3", min_days=4, max_days=7),
         Level("Green", min_days=25, max_days=33),
     ]
     
