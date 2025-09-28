@@ -99,8 +99,15 @@ def index():
 def get_categories():
     language = request.args.get('language')
     if language:
-        vocab_db = get_vocab_data()
-        categories = list({item.vocab.category for item in vocab_db.get_by_language(language) if item.vocab.category})
+        vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
+        items = vocab_db.get_by_language(language)
+        seen = set()
+        categories = []
+        for item in items:
+            cat = item.vocab.category
+            if cat and cat not in seen:
+                categories.append(cat)
+                seen.add(cat)
         categories.reverse()
     else:
         categories = []
@@ -291,6 +298,7 @@ def test():
     session['test_data'] = testable_terms
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
+    session['skipped_answers'] = 0
     session['show_term'] = True
     session['list_of_wrong_answers'] = []
     session['all_tested_items'] = []
@@ -306,6 +314,7 @@ def test_errors():
     session['test_data'] = session['list_of_wrong_answers']
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
+    session['skipped_answers'] = 0
     session['show_term'] = True
     session['list_of_wrong_answers'] = []
     session['all_tested_items'] = []
@@ -313,7 +322,11 @@ def test_errors():
     return redirect(url_for('testing'))
 
 def _get_position_in_test() -> int:
-    return (session['correct_answers'] + session['wrong_answers']) % len(session['test_data'])
+    skipped = session.get('skipped_answers', 0)
+    correct = session.get('correct_answers', 0)
+    wrong = session.get('wrong_answers', 0)
+    total_answered = correct + wrong + skipped
+    return total_answered % len(session['test_data'])
 
 def _get_data_at_position(position: int) -> Dict[str, Any]:
     return session['test_data'][session['order'][position]]
@@ -480,6 +493,14 @@ def switch_direction():
         label_translation=labels['label_translation'],
         label_term=labels['label_term']
     )
+
+@app.route('/skip_question', methods=['POST'])
+@require_auth
+def skip_question():
+    """Skip current question and advance to next without changing score"""
+    # Increment skip counter to advance position
+    session['skipped_answers'] = session.get('skipped_answers', 0) + 1
+    return redirect(url_for('testing'))
 
 @app.route('/write_scores', methods=['POST'])
 @require_auth

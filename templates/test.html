@@ -49,6 +49,9 @@
                     <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
                     <button type="submit">Übersetzung</button>
                 </form>
+                <form action="{{ url_for('skip_question') }}" method="post" style="display: inline;">
+                    <button type="submit"><i class="fas fa-forward"></i> Skip</button>
+                </form>
                 <form action="{{ url_for('switch_direction') }}" method="post" style="display: inline;">
                     <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
                     <button type="submit"><i class="fas fa-exchange-alt"></i> Switch</button>
