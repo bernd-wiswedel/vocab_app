@@ -7,6 +7,7 @@ import hashlib
 import base64
 from datetime import timedelta
 from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE
+from level import LevelSystem, get_testable_terms
 from flask import Flask
 from flask_session import Session
 from cryptography.fernet import Fernet
@@ -244,12 +245,26 @@ def test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
     vocab_data = get_vocab_data()
-    filtered_data = [item for item in vocab_data if item[COL_NAME_CATEGORY] in selected_categories and item[COL_NAME_LANGUAGE] == selected_language]
-    session['test_data'] = filtered_data
+    
+    # Filter by language and category first
+    filtered_data = [item for item in vocab_data 
+                    if item[COL_NAME_CATEGORY] in selected_categories 
+                    and item[COL_NAME_LANGUAGE] == selected_language]
+    
+    # Use level system to select testable terms based on urgency
+    testable_terms = get_testable_terms(filtered_data)
+    
+    if not testable_terms:
+        # No terms available for testing - redirect back with message
+        # TODO: Add flash message support for user feedback
+        return redirect(url_for('index'))
+    
+    session['test_data'] = testable_terms
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['show_term'] = True
     session['list_of_wrong_answers'] = []
+    session['all_tested_items'] = []
 
     return redirect(url_for('testing'))
 
@@ -264,6 +279,7 @@ def test_errors():
     session['wrong_answers'] = 0
     session['show_term'] = True
     session['list_of_wrong_answers'] = []
+    session['all_tested_items'] = []
 
     return redirect(url_for('testing'))
 
@@ -288,12 +304,22 @@ def testing():
     language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
 
+    # Create minimal copy with only required fields for template
+    minimal_current_data = {
+        COL_NAME_TERM: current_data[COL_NAME_TERM],
+        COL_NAME_TRANSLATION: current_data[COL_NAME_TRANSLATION], 
+        COL_NAME_COMMENT: current_data.get(COL_NAME_COMMENT, ''),
+        COL_NAME_LANGUAGE: current_data[COL_NAME_LANGUAGE],
+        'score_status': current_data.get('score_status', 'Red-1'),
+        'score_date': current_data.get('score_date')
+    }
+
     # Use the utility function to get the labels and comment visibility
     labels = _get_language_labels(language, show_term)
 
     return render_template(
         'test.html',
-        current_data=current_data,
+        current_data=minimal_current_data,
         term_key=COL_NAME_TERM,
         language_key=COL_NAME_LANGUAGE,
         comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
@@ -338,20 +364,53 @@ def show_translation():
 @app.route('/check_answer', methods=['POST'])
 @require_auth
 def check_answer():
-    """Handle the user's response during testing.
-
-    Incorrect answers are logged before counters are updated.
-    """
-    # Capture the current test position before counters are modified so that
-    # the associated data can be retrieved reliably.
+    """Handle the user's response during testing with level system progression."""
+    # Capture the current test position before counters are modified
     position = _get_position_in_test()
     current_data = _get_data_at_position(position)
 
     answer_correct = request.form['answer_correct'] == 'Richtig'
+    
+    # Get current level information
+    current_level = current_data.get('score_status', 'Red-1')
+    last_test_date = current_data.get('score_date')
+    
+    # Process the answer through the level system
+    new_level, new_date = LevelSystem.process_answer(current_level, answer_correct, last_test_date)
+    
+    # Update the item in session data
+    term_key = current_data.get(COL_NAME_TERM)
+    if term_key:
+        # Find and update the item in the test data
+        for item in session.get('test_data', []):
+            if item.get(COL_NAME_TERM) == term_key:
+                item['score_status'] = new_level
+                item['score_date'] = new_date
+                break
+        
+        # Also update in vocab_data if it exists in session
+        vocab_data = session.get('vocab_data', [])
+        for item in vocab_data:
+            if item.get(COL_NAME_TERM) == term_key:
+                item['score_status'] = new_level
+                item['score_date'] = new_date
+                break
+
+    # Update counters and track all tested items for writing back to sheets
+    if 'all_tested_items' not in session:
+        session['all_tested_items'] = []
+    
+    # Add current item with updated level/date to tested items
+    tested_item = current_data.copy()
+    tested_item['score_status'] = new_level
+    tested_item['score_date'] = new_date
+    session['all_tested_items'].append(tested_item)
+    
     if answer_correct:
         session['correct_answers'] += 1
     else:
-        session['list_of_wrong_answers'].append(current_data)
+        # Add to wrong answers for review (still needed for review functionality)
+        session['list_of_wrong_answers'].append(tested_item)
         session['wrong_answers'] += 1
 
     return redirect(url_for('testing'))
@@ -391,28 +450,51 @@ def switch_direction():
 @require_auth
 def write_scores():
     """Write vocabulary scores to Google Sheets"""
-    if not session.get('list_of_wrong_answers'):
+    all_tested_items = session.get('all_tested_items', [])
+    if not all_tested_items:
         return redirect(url_for('index'))
     
     try:
-        # Get the language from the first item in wrong answers
-        wrong_answers = session['list_of_wrong_answers']
-        if not wrong_answers:
-            return redirect(url_for('index'))
+        # Group items by language
+        items_by_language = {}
+        for item in all_tested_items:
+            language = item.get(COL_NAME_LANGUAGE, 'Englisch')
+            if language not in items_by_language:
+                items_by_language[language] = []
+            items_by_language[language].append(item)
+        
+        # Write scores for each language
+        total_rows_written = 0
+        for language, items in items_by_language.items():
+            # Group by level to write efficiently
+            items_by_level = {}
+            for item in items:
+                level = item.get('score_status', 'Red-1')
+                if level not in items_by_level:
+                    items_by_level[level] = []
+                items_by_level[level].append(item)
             
-        language = wrong_answers[0].get(COL_NAME_LANGUAGE, 'Englisch')
+            # Write each level group
+            for level, level_items in items_by_level.items():
+                rows_written = write_scores_to_sheet(level_items, language, level)
+                total_rows_written += rows_written
         
-        # Write the scores to the appropriate sheet
-        rows_written = write_scores_to_sheet(wrong_answers, language)
+        # Clear tested items after successful write
+        session['all_tested_items'] = []
         
-        # You could add a success message here if desired
-        # For now, just redirect back to the error review
-        return redirect(url_for('review_failures'))
+        # Redirect back to the error review if there were wrong answers, otherwise to index
+        if session.get('list_of_wrong_answers'):
+            return redirect(url_for('review_failures'))
+        else:
+            return redirect(url_for('index'))
         
     except Exception as e:
         # Handle errors gracefully - could add flash message here
         print(f"Error writing scores: {e}")
-        return redirect(url_for('review_failures'))
+        if session.get('list_of_wrong_answers'):
+            return redirect(url_for('review_failures'))
+        else:
+            return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

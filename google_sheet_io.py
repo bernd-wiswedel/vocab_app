@@ -4,6 +4,7 @@ import os
 import glob
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from level import LevelSystem
 
 SHEET_URL_BASE = 'https://docs.google.com/spreadsheets/d/1jTv5qPBcGCTcGFqnj9mnQvEwfjsf4YtQnA5GTJbU-Ig/export?format=csv&gid='
 SHEET_URL_LATEIN = SHEET_URL_BASE + '0'
@@ -103,10 +104,11 @@ def fetch_data():
     - 'Sprache': The language of the vocabulary term (either 'Latein' or 'Englisch').
     
     Additionally, if scores exist, these fields are added:
-    - 'score_status': Status level ('red' for wrong answers)
+    - 'score_status': Status level ('Red-1', 'Red-2', etc. or migrated from old 'red' status)
     - 'score_date': When the score was recorded (ISO date format: YYYY-MM-DD)
+    - 'score_urgency': Pre-calculated Urgency object for test prioritization
 
-    :return: A list of dictionaries containing the vocabulary data with optional score information.
+    :return: A list of dictionaries containing the vocabulary data with optional score information and urgency.
     """
     print("Fetching vocabulary data from sheets...")
     latin_data = _fetch_data_from_google_sheet(SHEET_URL_LATEIN, SHEET_NAME_LATEIN)
@@ -121,29 +123,38 @@ def fetch_data():
     scores = _fetch_scores()
     print(f"Loaded {len(scores)} score entries")
     
-    # Merge scores into vocabulary data
+    # Merge scores into vocabulary data and migrate to level system
     for item in vocab_data:
         term = item.get(COL_NAME_TERM)
         if term and term in scores:
             score_info = scores[term]
-            item['score_status'] = score_info.get('status')
+            old_status = score_info.get('status')
+            
+            # Migrate old status to new level system
+            item['score_status'] = LevelSystem.migrate_old_status(old_status)
             item['score_date'] = score_info.get('date')
         else:
-            # Set default values for items without scores
-            item['score_status'] = None
+            # Set default values for items without scores (new terms start at Red-1)
+            item['score_status'] = 'Red-1'
             item['score_date'] = None
+        
+        # Calculate and assign urgency for each item
+        status = item['score_status']
+        date_value = item['score_date']
+        item['score_urgency'] = LevelSystem.calculate_urgency(status, date_value)
     
-    vocab_with_scores = len([item for item in vocab_data if item.get('score_status')])
-    print(f"Merged scores for {vocab_with_scores} vocabulary items")
+    vocab_with_scores = len([item for item in vocab_data if item.get('score_status') != 'Red-1' or item.get('score_date')])
+    print(f"Processed {vocab_with_scores} vocabulary items with score history")
     
     return vocab_data
 
-def write_scores_to_sheet(vocab_items, language='Englisch'):
+def write_scores_to_sheet(vocab_items, language='Englisch', level_name='Red-1'):
     """
     Write vocabulary scores to the appropriate Google Sheet tab.
     
-    :param vocab_items: List of vocabulary items (dictionaries with 'Key' field)
+    :param vocab_items: List of vocabulary items (dictionaries with term keys)
     :param language: 'Englisch' or 'Latein' to determine which sheet tab to write to
+    :param level_name: Level name to write (default 'Red-1' for wrong answers)
     """
     from datetime import date
     
@@ -183,7 +194,7 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
             if not key:
                 continue  # Skip items without keys
                 
-            row_data = [key, 'red', current_date]
+            row_data = [key, level_name, current_date]
             
             if key in key_to_row:
                 # Update existing row
