@@ -287,9 +287,9 @@ def random_order(length: int) -> List[int]:
     return random.sample(range(length), length)
 
 
-@app.route('/test', methods=['POST'])
+@app.route('/start_test', methods=['POST'])
 @require_auth
-def test():
+def start_test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
     vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
@@ -316,7 +316,7 @@ def test():
     session['list_of_wrong_answers'] = []
     session['all_tested_items'] = []
 
-    return redirect(url_for('testing'))
+    return redirect(url_for('test'))
 
 @app.route('/test_errors', methods=['POST'])
 @require_auth
@@ -332,7 +332,7 @@ def test_errors():
     session['list_of_wrong_answers'] = []
     session['all_tested_items'] = []
 
-    return redirect(url_for('testing'))
+    return redirect(url_for('test'))
 
 def _get_position_in_test() -> int:
     skipped = session.get('skipped_answers', 0)
@@ -345,9 +345,9 @@ def _get_data_at_position(position: int) -> Dict[str, Any]:
     return session['test_data'][session['order'][position]]
 
 
-@app.route('/testing')
+@app.route('/test')
 @require_auth
-def testing():
+def test():
     if not session.get('test_data'):
         return redirect(url_for('index'))
 
@@ -477,7 +477,7 @@ def check_answer():
         session['list_of_wrong_answers'].append(tested_item)
         session['wrong_answers'] += 1
 
-    return redirect(url_for('testing'))
+    return redirect(url_for('test'))
 
 @app.route('/switch_direction', methods=['POST'])
 @require_auth
@@ -519,7 +519,7 @@ def skip_question():
     """Skip current question and advance to next without changing score"""
     # Increment skip counter to advance position
     session['skipped_answers'] = session.get('skipped_answers', 0) + 1
-    return redirect(url_for('testing'))
+    return redirect(url_for('test'))
 
 @app.route('/write_scores', methods=['POST'])
 @require_auth
