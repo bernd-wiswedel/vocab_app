@@ -241,7 +241,7 @@ def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
 
     :param language: The language of the current data.
     :param show_term: Boolean indicating whether the term is being shown (True) or the translation (False).
-    :return: A dictionary with the following keys: label_language, label_translation, label_term, and show_comment.
+    :return: A dictionary with the following keys: label_language, label_translation, label_term.
     """
     if language == 'Latein':
         label_language = 'Latein'
@@ -257,13 +257,10 @@ def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
         label_translation = 'Translation'
         label_term = 'Term'
 
-    show_comment = True  # Always show comments during testing
-
     return {
         'label_language': label_language,
         'label_translation': label_translation,
-        'label_term': label_term,
-        'show_comment': show_comment
+        'label_term': label_term
     }
     
 def _practice_on(filtered_data, selected_language, header, is_error_review=False):
@@ -371,6 +368,10 @@ def test():
     if not session.get('test_data'):
         return redirect(url_for('index'))
 
+    # Initialize randomized order on first access (before position calculation)
+    if not session.get('order'):
+        session['order'] = random_order(len(session['test_data']))
+
     position = _get_position_in_test()
     
     # If all terms have been answered, redirect to review failures or index
@@ -379,10 +380,6 @@ def test():
             return redirect(url_for('review_failures'))
         else:
             return redirect(url_for('index'))
-    
-    # Initialize randomized order on first access
-    if not session.get('order'):
-        session['order'] = random_order(len(session['test_data']))
     
     current_data = session['test_data'][position]
     language = current_data[COL_NAME_LANGUAGE]
@@ -404,15 +401,24 @@ def test():
     # Add status info to minimal_current_data
     minimal_current_data = _add_status_info_to_data(minimal_current_data)
 
+    # Calculate progress information
+    total_terms = len(session['test_data'])
+    completed_terms = session['correct_answers'] + session['wrong_answers'] + session['skipped_answers']
+    progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
+
     return render_template(
         'test.html',
         current_data=minimal_current_data,
         term_key=COL_NAME_TERM,
         language_key=COL_NAME_LANGUAGE,
-        comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
+        comment_key=COL_NAME_COMMENT,
         translation_key=COL_NAME_TRANSLATION,
         correct_count=session['correct_answers'],
         wrong_count=session['wrong_answers'],
+        skipped_count=session['skipped_answers'],
+        total_terms=total_terms,
+        completed_terms=completed_terms,
+        progress_percentage=progress_percentage,
         show_translation=False,
         show_term=show_term,
         label_language=labels['label_language'],
@@ -432,15 +438,24 @@ def show_translation():
     # Use the utility function to get the labels and comment visibility
     labels = _get_language_labels(language, show_term)
 
+    # Calculate progress information (same as in test route)
+    total_terms = len(session.get('test_data', []))
+    completed_terms = session.get('correct_answers', 0) + session.get('wrong_answers', 0) + session.get('skipped_answers', 0)
+    progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
+
     return render_template(
         'test.html',
         current_data=current_data,
         term_key=COL_NAME_TERM,
         language_key=COL_NAME_LANGUAGE,
-        comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
+        comment_key=COL_NAME_COMMENT,
         translation_key=COL_NAME_TRANSLATION,
         correct_count=session['correct_answers'],
         wrong_count=session['wrong_answers'],
+        skipped_count=session.get('skipped_answers', 0),
+        total_terms=total_terms,
+        completed_terms=completed_terms,
+        progress_percentage=progress_percentage,
         show_translation=True,
         show_term=show_term,
         label_language=labels['label_language'],
@@ -532,15 +547,24 @@ def switch_direction():
     # Add status info to current_data
     current_data = _add_status_info_to_data(current_data)
 
+    # Calculate progress information (same as in test route)
+    total_terms = len(session.get('test_data', []))
+    completed_terms = session.get('correct_answers', 0) + session.get('wrong_answers', 0) + session.get('skipped_answers', 0)
+    progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
+
     return render_template(
         'test.html',
         current_data=current_data,
         term_key=COL_NAME_TERM,
         language_key=COL_NAME_LANGUAGE,
-        comment_key=COL_NAME_COMMENT if labels['show_comment'] else None,
+        comment_key=COL_NAME_COMMENT,
         translation_key=COL_NAME_TRANSLATION,
         correct_count=session['correct_answers'],
         wrong_count=session['wrong_answers'],
+        skipped_count=session.get('skipped_answers', 0),
+        total_terms=total_terms,
+        completed_terms=completed_terms,
+        progress_percentage=progress_percentage,
         show_translation=False,
         show_term=show_term,
         label_language=labels['label_language'],

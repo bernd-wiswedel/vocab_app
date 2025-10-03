@@ -15,6 +15,31 @@
         </div>
     </div>
     <div class="wrapper-container">
+        <!-- Progress Bar -->
+        <div class="test-progress">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong>Progress: {{ completed_terms }}/{{ total_terms }}</strong>
+                <span>{{ progress_percentage }}%</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" style="width: {{ progress_percentage }}%;"></div>
+            </div>
+            <div class="progress-stats">
+                <div class="stat correct">
+                    <span>✓</span>
+                    <span>{{ correct_count }} correct</span>
+                </div>
+                <div class="stat wrong">
+                    <span>✗</span>
+                    <span>{{ wrong_count }} wrong</span>
+                </div>
+                <div class="stat skipped">
+                    <span>⏭</span>
+                    <span>{{ skipped_count }} skipped</span>
+                </div>
+            </div>
+        </div>
+        
         <div class="content-container">
             <div class="status-info">
                 {% with item = current_data %}
@@ -55,10 +80,6 @@
                 </form>
             {% endif %}
         </div>
-    </div>
-    <div>
-        <p>Richtig: {{ correct_count }}</p>
-        <p>Falsch: {{ wrong_count }}</p>
     </div>
 </body>
 </html>
