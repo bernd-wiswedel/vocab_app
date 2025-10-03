@@ -24,7 +24,7 @@ app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
 Session(app)
 
 # Password protection
-LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'default_password')
+LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'password')
 
 def get_vocab_data() -> VocabularyDatabase:
     """Get vocabulary database from session (assumes it's already loaded)"""
