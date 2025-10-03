@@ -22,8 +22,8 @@
                 <div class="status-box status-{{ status_color }}">
                     {% if current_data.current_status == 'Red-1' %}
                         &infin;
-                    {% elif current_data.days_remaining is not none %}
-                        {{ current_data.days_remaining }}d
+                    {% elif current_data.days_until_expire is not none %}
+                        {{ current_data.days_until_expire }}d
                     {% else %}
                         ?
                     {% endif %}

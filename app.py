@@ -200,27 +200,38 @@ def review_failures():
 def _add_status_info_to_data(current_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Calculate status info and add it to current_data dictionary.
-    Adds 'current_status' and 'days_remaining' keys.
+    Adds 'current_status', 'days_until_retest', and 'days_until_expire' keys.
     """
     from datetime import date
     
     status = current_data.get('score_status', 'Red-1')
     last_date = current_data.get('score_date')
     
-    # Calculate days remaining until expiry
-    days_remaining = None
+    # Calculate days until retest and expiry
+    days_until_retest = None
+    days_until_expire = None
+    
     if last_date and status != 'Red-1':
         level = LevelSystem.get_level(status)
+        test_date = date.fromisoformat(last_date)
+        days_since_test = (date.today() - test_date).days
+        
+        # Days until eligible for retest (min_days - days_since_test)
+        days_until_retest = max(0, level.min_days - days_since_test)
+        
+        # Days until expiry (max_days - days_since_test + 1)
         if level.max_days is not None:
-            test_date = date.fromisoformat(last_date)
-            days_since_test = (date.today() - test_date).days
-            days_remaining = level.max_days - days_since_test
-            if days_remaining < 0:
-                days_remaining = 0  # Expired
+            days_until_expire = max(0, level.max_days - days_since_test + 1)
+        else:
+            days_until_expire = None  # Never expires (only Red-1)
+    elif status == 'Red-1':
+        days_until_retest = 0  # Always ready for retest
+        days_until_expire = None  # Red-1 doesn't expire further
     
     # Add calculated values to the data dictionary
     current_data['current_status'] = status
-    current_data['days_remaining'] = days_remaining
+    current_data['days_until_retest'] = days_until_retest
+    current_data['days_until_expire'] = days_until_expire
     return current_data
 
 def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
@@ -256,6 +267,10 @@ def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
     }
     
 def _practice_on(filtered_data, selected_language, header, is_error_review=False):
+    # Add status information to each item
+    for item in filtered_data:
+        item.update(_add_status_info_to_data(item))
+    
     # create a transformation filter_data_grouped so that we can group the data by category
     filtered_data_grouped = {}
     # remove all keys in the item set whose name does not start with 'Unnamed'

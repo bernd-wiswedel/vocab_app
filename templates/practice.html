@@ -10,7 +10,7 @@
     <h1>{{ header }}</h1>
     <a href="{{ url_for('index') }}">Zurück</a>
     <div class="table-responsive">
-        <table>
+        <table class="practice-table">
             <thead>
                 <tr>
                     <th>{{ col_name_term }}</th>
@@ -18,12 +18,13 @@
                         <th>{{ col_name_comment }}</th>
                     {% endif %}
                     <th>{{ col_name_translation }}</th>
+                    <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 {% for category, items in vocab_data.items() %}
                     <tr>
-                        <td colspan="3" class="category-header">{{ category }}</td>
+                        <td colspan="4" class="category-header">{{ category }}</td>
                     </tr>
                     {% for item in items %}
                         <tr>
@@ -32,6 +33,40 @@
                                 <td>{{ item[col_name_comment] }}</td>
                             {% endif %}
                             <td>{{ item[col_name_translation] }}</td>
+                            <td>
+                                <div class="practice-status-bar">
+                                    {% set status_parts = item.current_status.split('-') %}
+                                    {% if status_parts[0] == 'Red' %}
+                                        <span class="level-badge level-red">{{ status_parts[1] }}</span>
+                                    {% elif status_parts[0] == 'Yellow' %}
+                                        <span class="level-badge level-yellow">{{ status_parts[1] }}</span>
+                                    {% elif status_parts[0] == 'Green' %}
+                                        <span class="level-badge level-green">✓</span>
+                                    {% else %}
+                                        <span class="level-badge level-red">?</span>
+                                    {% endif %}
+                                    <span class="status-separator">|</span>
+                                    <span class="status-item">
+                                        {% if item.current_status == 'Red-1' %}
+                                            ⏰ 0d
+                                        {% elif item.days_until_retest is not none %}
+                                            ⏰ {{ item.days_until_retest }}d
+                                        {% else %}
+                                            ⏰ ?
+                                        {% endif %}
+                                    </span>
+                                    <span class="status-separator">|</span>
+                                    <span class="status-item">
+                                        {% if item.current_status == 'Red-1' %}
+                                            ⚠️ ∞
+                                        {% elif item.days_until_expire is not none %}
+                                            ⚠️ {{ item.days_until_expire }}d
+                                        {% else %}
+                                            ⚠️ ?
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </td>
                         </tr>
                     {% endfor %}
                 {% endfor %}
