@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Monitor pip dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    # Limit number of open PRs
+    open-pull-requests-limit: 5
+    # Group minor and patch updates
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Auto-assign reviewers (replace with your GitHub username)
+    assignees:
+      - "bernd-wiswedel"
+    # Commit message configuration
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Ignore specific dependencies if needed
+    ignore:
+      # Example: ignore major version updates for stable dependencies
+      - dependency-name: "Flask"
+        update-types: ["version-update:semver-major"]

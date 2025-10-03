@@ -1,0 +1,120 @@
+name: Dependency Security & Update Check
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Allow manual triggering
+  pull_request:
+    paths:
+      - 'requirements.txt'
+
+jobs:
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-audit safety
+        pip install -r requirements.txt
+        
+    - name: Run security audit
+      run: |
+        echo "Running security audit..."
+        pip-audit --desc --format=json --output=audit_results.json || true
+        safety check --json --output=safety_results.json || true
+        
+    - name: Check for outdated packages
+      run: |
+        echo "Checking for outdated packages..."
+        pip list --outdated --format=json > outdated_packages.json || true
+        
+    - name: Generate summary report
+      run: |
+        python3 << 'EOF'
+        import json
+        import os
+        
+        # Read audit results
+        audit_issues = []
+        try:
+            with open('audit_results.json', 'r') as f:
+                audit_data = json.load(f)
+                if 'vulnerabilities' in audit_data:
+                    audit_issues = audit_data['vulnerabilities']
+        except:
+            pass
+            
+        # Read safety results  
+        safety_issues = []
+        try:
+            with open('safety_results.json', 'r') as f:
+                safety_data = json.load(f)
+                safety_issues = safety_data if isinstance(safety_data, list) else []
+        except:
+            pass
+            
+        # Read outdated packages
+        outdated_packages = []
+        try:
+            with open('outdated_packages.json', 'r') as f:
+                outdated_packages = json.load(f)
+        except:
+            pass
+            
+        # Generate summary
+        summary = f"""# Dependency Report Summary
+        
+        ## Security Issues
+        {'❌ Found {} security vulnerabilities'.format(len(audit_issues + safety_issues)) if audit_issues or safety_issues else '✅ No security vulnerabilities found'}
+        
+        ## Outdated Packages  
+        {'📦 {} packages have updates available'.format(len(outdated_packages)) if outdated_packages else '✅ All packages are up to date'}
+        
+        ## Details
+        
+        ### Security Vulnerabilities
+        """
+        
+        for issue in audit_issues:
+            summary += f"- **{issue.get('package', 'Unknown')}** {issue.get('installed_version', '')}: {issue.get('description', 'Security issue')}\n"
+            
+        for issue in safety_issues:
+            summary += f"- **{issue.get('package', 'Unknown')}** {issue.get('installed_version', '')}: {issue.get('vulnerability', 'Security issue')}\n"
+            
+        if not audit_issues and not safety_issues:
+            summary += "No security vulnerabilities detected.\n"
+            
+        summary += "\n### Outdated Packages\n"
+        
+        for pkg in outdated_packages[:10]:  # Limit to first 10
+            summary += f"- **{pkg['name']}**: {pkg['version']} → {pkg['latest_version']}\n"
+            
+        if not outdated_packages:
+            summary += "All packages are up to date.\n"
+            
+        if len(outdated_packages) > 10:
+            summary += f"\n... and {len(outdated_packages) - 10} more packages\n"
+            
+        print(summary)
+        
+        # Save to file for potential issue creation
+        with open('dependency_summary.md', 'w') as f:
+            f.write(summary)
+        EOF
+        
+    - name: Display results
+      run: |
+        if [ -f dependency_summary.md ]; then
+          cat dependency_summary.md
+        fi
