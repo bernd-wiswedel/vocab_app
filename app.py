@@ -192,10 +192,72 @@ def practice():
 
     return _practice_on(filtered_data, selected_language, "Üben")
 
-@app.route('/review_failures')
+@app.route('/review')
 @require_auth
-def review_failures():
-    return _practice_on(session['list_of_wrong_answers'], session['test_data'][0][COL_NAME_LANGUAGE], "Fehler wiederholen", is_error_review=True)
+def review():
+    """Show comprehensive review of all tested terms with sorting by result"""
+    all_tested_items = session.get('all_tested_items', [])
+    if not all_tested_items:
+        return redirect(url_for('index'))
+    
+    # Add test result status to each item
+    wrong_answers = session.get('list_of_wrong_answers', [])
+    correct_count = session.get('correct_answers', 0)
+    wrong_count = session.get('wrong_answers', 0)
+    skipped_count = session.get('skipped_answers', 0)
+    
+    # Create sets for quick lookup
+    wrong_terms = {f"{item.get('Fremdsprache', '')}_{item.get('Sprache', '')}" for item in wrong_answers}
+    
+    # Categorize all tested items
+    wrong_items = []
+    skipped_items = []
+    correct_items = []
+    
+    for item in all_tested_items:
+        # Add status information to each item
+        item.update(_add_status_info_to_data(item))
+        
+        # Check if item was explicitly marked as skipped
+        if item.get('test_result') == 'skipped':
+            skipped_items.append(item)
+        else:
+            # For answered items, check if they were wrong or correct
+            term_key = f"{item.get('Fremdsprache', '')}_{item.get('Sprache', '')}"
+            if term_key in wrong_terms:
+                item['test_result'] = 'wrong'
+                wrong_items.append(item)
+            else:
+                item['test_result'] = 'correct'
+                correct_items.append(item)
+    
+    # Sort items: wrong first, then skipped, then correct
+    sorted_items = wrong_items + skipped_items + correct_items
+    
+    # Group by category for display
+    grouped_data = {}
+    for item in sorted_items:
+        category = item.get(COL_NAME_CATEGORY, 'Unknown')
+        if category not in grouped_data:
+            grouped_data[category] = []
+        grouped_data[category].append(item)
+    
+    # Get language for header
+    language = all_tested_items[0].get(COL_NAME_LANGUAGE, 'Unknown') if all_tested_items else 'Unknown'
+    
+    return render_template(
+        'review.html',
+        vocab_data=grouped_data,
+        header="Test Review",
+        language=language,
+        col_name_term=COL_NAME_TERM,
+        col_name_comment=COL_NAME_COMMENT if language != 'Englisch' else None,
+        col_name_translation=COL_NAME_TRANSLATION,
+        correct_count=correct_count,
+        wrong_count=wrong_count,
+        skipped_count=skipped_count,
+        total_count=len(all_tested_items)
+    )
 
 def _add_status_info_to_data(current_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -321,6 +383,7 @@ def start_test():
         return redirect(url_for('index'))
     
     session['test_data'] = testable_terms
+    session['order'] = random_order(len(testable_terms))  # Create order array with test_data
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['skipped_answers'] = 0
@@ -336,13 +399,22 @@ def test_errors():
     if not session.get('list_of_wrong_answers'):
         return redirect(url_for('index'))
     
+    # Preserve correctly answered items from the original test
+    all_tested_items = session.get('all_tested_items', [])
+    wrong_answer_terms = {item[COL_NAME_TERM] for item in session['list_of_wrong_answers']}
+    correctly_answered_items = [
+        item for item in all_tested_items 
+        if item[COL_NAME_TERM] not in wrong_answer_terms
+    ]
+    
     session['test_data'] = session['list_of_wrong_answers']
+    session['order'] = random_order(len(session['list_of_wrong_answers']))  # Create order array with test_data
     session['correct_answers'] = 0
     session['wrong_answers'] = 0
     session['skipped_answers'] = 0
     session['show_term'] = True
     session['list_of_wrong_answers'] = []
-    session['all_tested_items'] = []
+    session['all_tested_items'] = correctly_answered_items  # Preserve correct items
 
     return redirect(url_for('test'))
 
@@ -368,16 +440,12 @@ def test():
     if not session.get('test_data'):
         return redirect(url_for('index'))
 
-    # Initialize randomized order on first access (before position calculation)
-    if not session.get('order'):
-        session['order'] = random_order(len(session['test_data']))
-
     position = _get_position_in_test()
     
-    # If all terms have been answered, redirect to review failures or index
+    # If all terms have been answered, redirect to review or index
     if position == -1:
-        if session.get('list_of_wrong_answers'):
-            return redirect(url_for('review_failures'))
+        if session.get('all_tested_items'):
+            return redirect(url_for('review'))
         else:
             return redirect(url_for('index'))
     
@@ -470,9 +538,9 @@ def check_answer():
     # Get current position to identify the term being answered
     position = _get_position_in_test()
     if position == -1:
-        # No more terms, redirect appropriately
-        if session.get('list_of_wrong_answers'):
-            return redirect(url_for('review_failures'))
+        # No more terms, redirect to review
+        if session.get('all_tested_items'):
+            return redirect(url_for('review'))
         else:
             return redirect(url_for('index'))
     
@@ -576,10 +644,31 @@ def switch_direction():
 @require_auth
 def skip_question():
     """Skip current question and mark it as shown without changing score"""
+    # Get current position to identify the term being skipped
+    position = _get_position_in_test()
+    if position == -1:
+        # No more terms, redirect to review
+        if session.get('all_tested_items'):
+            return redirect(url_for('review'))
+        else:
+            return redirect(url_for('index'))
+    
+    current_data = session['test_data'][position]
+    
+    # Add skipped item to all_tested_items with special marking
+    if 'all_tested_items' not in session:
+        session['all_tested_items'] = []
+    
+    # Add current item to tested items, marked as skipped
+    tested_item = current_data.copy()
+    tested_item['test_result'] = 'skipped'  # Mark as skipped
+    # Don't change score for skipped items - keep original status
+    tested_item = _add_status_info_to_data(tested_item)
+    session['all_tested_items'].append(tested_item)
+    
     # Increment skip counter
     session['skipped_answers'] = session.get('skipped_answers', 0) + 1
-    # Note: The term is already marked as shown when the test page loads,
-    # so skipping just moves to the next unshown term
+    
     return redirect(url_for('test'))
 
 @app.route('/write_scores', methods=['POST'])
@@ -608,19 +697,13 @@ def write_scores():
         # Clear tested items after successful write
         session['all_tested_items'] = []
         
-        # Redirect back to the error review if there were wrong answers, otherwise to index
-        if session.get('list_of_wrong_answers'):
-            return redirect(url_for('review_failures'))
-        else:
-            return redirect(url_for('index'))
+        # Redirect back to index after successful write
+        return redirect(url_for('index'))
         
     except Exception as e:
         # Handle errors gracefully - could add flash message here
         print(f"Error writing scores: {e}")
-        if session.get('list_of_wrong_answers'):
-            return redirect(url_for('review_failures'))
-        else:
-            return redirect(url_for('index'))
+        return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

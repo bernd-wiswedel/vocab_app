@@ -381,6 +381,73 @@ a:hover {
 .progress-stats .stat.wrong { color: #dc3545; }
 .progress-stats .stat.skipped { color: #6c757d; }
 
+/* Review page styling */
+.review-summary {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.summary-stats {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background-color: white;
+    border: 1px solid #dee2e6;
+}
+
+.stat-item.correct { color: #28a745; border-color: #28a745; }
+.stat-item.wrong { color: #dc3545; border-color: #dc3545; }
+.stat-item.skipped { color: #6c757d; border-color: #6c757d; }
+.stat-item.total { color: #007bff; border-color: #007bff; }
+
+.review-table .result-column {
+    width: 60px;
+    text-align: center;
+}
+
+.result-indicator {
+    text-align: center;
+    width: 40px;
+    padding: 8px 4px;
+}
+
+.result-icon {
+    font-size: 16px;
+}
+
+.correct-icon { color: #28a745; }
+.wrong-icon { color: #dc3545; }
+.skipped-icon { color: #6c757d; }
+
+.result-row.result-wrong {
+    background-color: #fff5f5;
+    border-left: 4px solid #dc3545;
+}
+
+.result-row.result-skipped {
+    background-color: #f8f9fa;
+    border-left: 4px solid #6c757d;
+}
+
+.result-row.result-correct {
+    background-color: #f8fff8;
+    border-left: 4px solid #28a745;
+}
+
 .content-container {
     position: relative; /* Enable absolute positioning for status info */
 }

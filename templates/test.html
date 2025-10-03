@@ -75,8 +75,8 @@
                     <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
                     <button type="submit"><i class="fas fa-exchange-alt"></i> Switch</button>
                 </form>
-                <form action="{{ url_for('review_failures') }}" method="get" style="display: inline;">
-                    <button type="submit">Fehler anschauen</button>
+                <form action="{{ url_for('review') }}" method="get" style="display: inline;">
+                    <button type="submit">Auswertung</button>
                 </form>
             {% endif %}
         </div>

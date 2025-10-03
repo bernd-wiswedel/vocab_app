@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ header }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div class="header">
+        <h1>{{ header }}</h1>
+        <a href="{{ url_for('index') }}">Zurück</a>
+    </div>
+    
+    <!-- Summary Stats -->
+    <div class="review-summary">
+        <div class="summary-stats">
+            <div class="stat-item correct">
+                <i class="fas fa-check-circle"></i>
+                <span>{{ correct_count }} Richtig</span>
+            </div>
+            <div class="stat-item wrong">
+                <i class="fas fa-times-circle"></i>
+                <span>{{ wrong_count }} Falsch</span>
+            </div>
+            <div class="stat-item skipped">
+                <i class="fas fa-forward"></i>
+                <span>{{ skipped_count }} Übersprungen</span>
+            </div>
+            <div class="stat-item total">
+                <i class="fas fa-list"></i>
+                <span>{{ total_count }} Gesamt</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="review-table">
+            <thead>
+                <tr>
+                    <th class="result-column">Result</th>
+                    <th>{{ col_name_term }}</th>
+                    {% if col_name_comment %}
+                        <th>{{ col_name_comment }}</th>
+                    {% endif %}
+                    <th>{{ col_name_translation }}</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category, items in vocab_data.items() %}
+                    <tr>
+                        <td colspan="5" class="category-header">{{ category }}</td>
+                    </tr>
+                    {% for item in items %}
+                        <tr class="result-row result-{{ item.test_result }}">
+                            <td class="result-indicator">
+                                {% if item.test_result == 'correct' %}
+                                    <i class="fas fa-check result-icon correct-icon"></i>
+                                {% elif item.test_result == 'wrong' %}
+                                    <i class="fas fa-times result-icon wrong-icon"></i>
+                                {% elif item.test_result == 'skipped' %}
+                                    <i class="fas fa-forward result-icon skipped-icon"></i>
+                                {% endif %}
+                            </td>
+                            <td>{{ item[col_name_term] }}</td>
+                            {% if col_name_comment %}
+                                <td>{{ item[col_name_comment] }}</td>
+                            {% endif %}
+                            <td>{{ item[col_name_translation] }}</td>
+                            <td>
+                                {% include '_status_display.html' %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        <form action="/test_errors" method="post">
+            <button type="submit" {% if wrong_count == 0 %}disabled{% endif %}>
+                <i class="fas fa-redo"></i> Fehler neu testen ({{ wrong_count }})
+            </button>
+        </form>
+        <form action="/write_scores" method="post">
+            <button type="submit">
+                <i class="fas fa-save"></i> Ergebnisse speichern
+            </button>
+        </form>
+    </div>
+</body>
+</html>
