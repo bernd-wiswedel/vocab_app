@@ -436,27 +436,29 @@ def check_answer():
     # Process the answer through the level system
     new_level, new_date = LevelSystem.process_answer(current_level, answer_correct, last_test_date)
     
-    # Update the item in session data
-    term_key = current_data.get(COL_NAME_TERM)
-    if term_key:
-        # Find and update the item in the test data
-        for item in session.get('test_data', []):
-            if item.get(COL_NAME_TERM) == term_key:
-                item['score_status'] = new_level
-                item['score_date'] = new_date
-                break
+    # Update the item in session data using direct position access instead of search
+    if 'test_data' in session and 'order' in session:
+        # Get the actual index in the test_data array using the current position
+        actual_index = session['order'][position]
+        session['test_data'][actual_index]['score_status'] = new_level
+        session['test_data'][actual_index]['score_date'] = new_date
         
         # Also update in vocab_data if it exists in session
         vocab_db = session.get('vocab_data')
         if vocab_db:
-            # Find the vocabulary term to update
-            language = current_data.get(COL_NAME_LANGUAGE)
-            if language:
-                # Find the term in the database
-                for vocab_term, vocab_score in vocab_db.data.items():
-                    if vocab_term.term == term_key and vocab_term.language == language:
-                        vocab_db.update_score(vocab_term, new_level, new_date)
-                        break
+            # Create temporary VocabularyTerm for direct lookup instead of sequential search
+            temp_vocab_term = VocabularyTerm(
+                term=current_data.get(COL_NAME_TERM),
+                translation=current_data.get(COL_NAME_TRANSLATION),
+                language=current_data.get(COL_NAME_LANGUAGE),
+                category=current_data.get(COL_NAME_CATEGORY),
+                comment=current_data.get(COL_NAME_COMMENT, '')
+            )
+            
+            # Direct lookup using the VocabularyTerm as key
+            vocab_score = vocab_db.get_score(temp_vocab_term)
+            if vocab_score:
+                vocab_db.update_score(temp_vocab_term, new_level, new_date)
 
     # Update counters and track all tested items for writing back to sheets
     if 'all_tested_items' not in session:
@@ -536,21 +538,11 @@ def write_scores():
                 items_by_language[language] = []
             items_by_language[language].append(item)
         
-        # Write scores for each language
+        # Write scores for each language in a single batch
         total_rows_written = 0
         for language, items in items_by_language.items():
-            # Group by level to write efficiently
-            items_by_level = {}
-            for item in items:
-                level = item.get('score_status', 'Red-1')
-                if level not in items_by_level:
-                    items_by_level[level] = []
-                items_by_level[level].append(item)
-            
-            # Write each level group
-            for level, level_items in items_by_level.items():
-                rows_written = write_scores_to_sheet(level_items, language, level)
-                total_rows_written += rows_written
+            rows_written = write_scores_to_sheet(items, language)
+            total_rows_written += rows_written
         
         # Clear tested items after successful write
         session['all_tested_items'] = []

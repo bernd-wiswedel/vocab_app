@@ -40,6 +40,20 @@ class VocabularyTerm:
     
     def __str__(self) -> str:
         return f"{self.term} -> {self.translation}"
+    
+    def __eq__(self, other) -> bool:
+        """Two VocabularyTerms are equal if all their attributes match"""
+        if not isinstance(other, VocabularyTerm):
+            return False
+        return (self.term == other.term and 
+                self.translation == other.translation and
+                self.language == other.language and
+                self.category == other.category and
+                self.comment == other.comment)
+    
+    def __hash__(self) -> int:
+        """Make VocabularyTerm hashable for use as dictionary keys"""
+        return hash((self.term, self.translation, self.language, self.category, self.comment))
 
 
 class VocabularyScore:
@@ -228,13 +242,12 @@ def fetch_data() -> VocabularyDatabase:
     
     return vocab_db
 
-def write_scores_to_sheet(vocab_items, language='Englisch', level_name='Red-1'):
+def write_scores_to_sheet(vocab_items, language='Englisch'):
     """
     Write vocabulary scores to the appropriate Google Sheet tab.
     
-    :param vocab_items: List of vocabulary items (dictionaries with term keys)
+    :param vocab_items: List of vocabulary items (dictionaries with term keys and score_status)
     :param language: 'Englisch' or 'Latein' to determine which sheet tab to write to
-    :param level_name: Level name to write (default 'Red-1' for wrong answers)
     """
     from datetime import date
     
@@ -271,6 +284,7 @@ def write_scores_to_sheet(vocab_items, language='Englisch', level_name='Red-1'):
         
         for item in vocab_items:
             key = item.get('Fremdsprache', '')
+            level_name = item.get('score_status', 'Red-1')  # Get level from item
             if not key:
                 continue  # Skip items without keys
                 
