@@ -134,6 +134,15 @@ select, input[type="text"] {
     font-size: 16px;
 }
 
+/* Make categories select resizable */
+#categories {
+    resize: both;
+    overflow: auto;
+    min-height: 100px;
+    height: 120px;
+    min-width: 200px;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
