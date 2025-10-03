@@ -3,15 +3,12 @@ import pandas as pd
 import random
 import json
 import os
-import hashlib
-import base64
 from datetime import timedelta
-from typing import List, Dict, Any
-from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase
+from typing import List, Dict, Any, Tuple
+from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore
 from level import LevelSystem
 from flask import Flask
 from flask_session import Session
-from cryptography.fernet import Fernet
 import time
 
 app = Flask(__name__)
@@ -25,6 +22,22 @@ Session(app)
 
 # Password protection
 LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'password')
+
+def _convert_vocab_tuples_to_dict(items: List[Tuple[VocabularyTerm, VocabularyScore]]) -> List[Dict[str, Any]]:
+    """Convert list of (VocabularyTerm, VocabularyScore) tuples to dictionary format"""
+    result = []
+    for term, score in items:
+        result.append({
+            COL_NAME_TERM: term.term,
+            COL_NAME_TRANSLATION: term.translation,
+            COL_NAME_LANGUAGE: term.language,
+            COL_NAME_CATEGORY: term.category,
+            COL_NAME_COMMENT: term.comment,
+            'score_status': score.status,
+            'score_date': score.date,
+            'score_urgency': score.urgency
+        })
+    return result
 
 def get_vocab_data() -> VocabularyDatabase:
     """Get vocabulary database from session (assumes it's already loaded)"""
@@ -103,8 +116,8 @@ def get_categories():
         items = vocab_db.get_by_language(language)
         seen = set()
         categories = []
-        for item in items:
-            cat = item.vocab.category
+        for term, score in items:  # Now returns tuples (VocabularyTerm, VocabularyScore)
+            cat = term.category
             if cat and cat not in seen:
                 categories.append(cat)
                 seen.add(cat)
@@ -172,7 +185,7 @@ def practice():
         filtered_items.extend(category_items)
     
     # Convert to dict format for backward compatibility
-    filtered_data = [item.to_dict() for item in filtered_items]
+    filtered_data = _convert_vocab_tuples_to_dict(filtered_items)
     
     # Remove 'Unnamed' keys (though this shouldn't be needed with the new structure)
     filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
@@ -288,7 +301,7 @@ def test():
         testable_items.extend(category_items)
     
     # Convert to dict format for backward compatibility with existing session logic
-    testable_terms = [item.to_dict() for item in testable_items]
+    testable_terms = _convert_vocab_tuples_to_dict(testable_items)
     
     if not testable_terms:
         # No terms available for testing - redirect back with message
@@ -436,10 +449,14 @@ def check_answer():
         # Also update in vocab_data if it exists in session
         vocab_db = session.get('vocab_data')
         if vocab_db:
-            # Use the database's update method
+            # Find the vocabulary term to update
             language = current_data.get(COL_NAME_LANGUAGE)
             if language:
-                vocab_db.update_score(term_key, language, new_level, new_date)
+                # Find the term in the database
+                for vocab_term, vocab_score in vocab_db.data.items():
+                    if vocab_term.term == term_key and vocab_term.language == language:
+                        vocab_db.update_score(vocab_term, new_level, new_date)
+                        break
 
     # Update counters and track all tested items for writing back to sheets
     if 'all_tested_items' not in session:

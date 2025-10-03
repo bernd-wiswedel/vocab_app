@@ -42,7 +42,7 @@ class VocabularyTerm:
         return f"{self.term} -> {self.translation}"
 
 
-class ScoreData:
+class VocabularyScore:
     """Represents scoring/progress data for a vocabulary term"""
     def __init__(self, status: str = 'Red-1', date: str = None, urgency: Urgency = None):
         self.status = status          # Level name ('Red-1', 'Yellow-2', etc.)
@@ -56,82 +56,50 @@ class ScoreData:
         self.urgency = LevelSystem.calculate_urgency(new_status, new_date)
 
 
-class VocabularyItem:
-    """Combined vocabulary term and its score data"""
-    def __init__(self, vocab_term: VocabularyTerm, score_data: ScoreData = None):
-        self.vocab = vocab_term
-        self.score = score_data or ScoreData()  # Default to Red-1 if no score
-    
-    @property
-    def key(self) -> Tuple[str, str]:
-        """Unique identifier: (term, language)"""
-        return (self.vocab.term, self.vocab.language)
-    
-    def to_dict(self) -> dict:
-        """Convert to dictionary format for backward compatibility"""
-        return {
-            COL_NAME_TERM: self.vocab.term,
-            COL_NAME_TRANSLATION: self.vocab.translation,
-            COL_NAME_LANGUAGE: self.vocab.language,
-            COL_NAME_CATEGORY: self.vocab.category,
-            COL_NAME_COMMENT: self.vocab.comment,
-            'score_status': self.score.status,
-            'score_date': self.score.date,
-            'score_urgency': self.score.urgency
-        }
-
 
 class VocabularyDatabase:
-    """Main data container using the requested mapping structure"""
+    """Main data container mapping VocabularyTerm -> VocabularyScore"""
     def __init__(self):
         # Use OrderedDict to preserve insertion order (Google Sheets order)
-        self.data: OrderedDict[Tuple[str, str], VocabularyItem] = OrderedDict()
+        self.data: OrderedDict[VocabularyTerm, VocabularyScore] = OrderedDict()
     
-    def add_vocabulary_item(self, vocab_term: VocabularyTerm, score_data: ScoreData = None) -> None:
+    def add_vocabulary_item(self, vocab_term: VocabularyTerm, score: VocabularyScore = None) -> None:
         """Add or update a vocabulary item"""
-        item = VocabularyItem(vocab_term, score_data)
-        key = (vocab_term.term, vocab_term.language)
-        self.data[key] = item
+        self.data[vocab_term] = score or VocabularyScore()
     
-    def get_item(self, term: str, language: str) -> Optional[VocabularyItem]:
-        """Get vocabulary item by term and language"""
-        return self.data.get((term, language))
+    def get_score(self, vocab_term: VocabularyTerm) -> Optional[VocabularyScore]:
+        """Get score for a vocabulary term"""
+        return self.data.get(vocab_term)
     
-    def get_by_language(self, language: str) -> List[VocabularyItem]:
+    def get_by_language(self, language: str) -> List[Tuple[VocabularyTerm, VocabularyScore]]:
         """Get all items for a specific language in Google Sheets order"""
-        # OrderedDict preserves insertion order, so we just filter
-        return [item for key, item in self.data.items() if key[1] == language]
+        return [(term, score) for term, score in self.data.items() if term.language == language]
     
-    def get_by_category(self, language: str, category: str) -> List[VocabularyItem]:
+    def get_by_category(self, language: str, category: str) -> List[Tuple[VocabularyTerm, VocabularyScore]]:
         """Get items filtered by language and category"""
-        return [item for item in self.get_by_language(language) 
-                if item.vocab.category == category]
+        return [(term, score) for term, score in self.data.items() 
+                if term.language == language and term.category == category]
     
-    def get_testable_terms(self, language: str = None, category: str = None, limit: int = 10000) -> List[VocabularyItem]:
+    def get_testable_terms(self, language: str = None, category: str = None, limit: int = 10000) -> List[Tuple[VocabularyTerm, VocabularyScore]]:
         """Get terms ready for testing, filtered and sorted by urgency"""
-        items = list(self.data.values())
+        items = list(self.data.items())
         
         # Apply filters
         if language:
-            items = [item for item in items if item.vocab.language == language]
+            items = [(term, score) for term, score in items if term.language == language]
         if category:
-            items = [item for item in items if item.vocab.category == category]
+            items = [(term, score) for term, score in items if term.category == category]
         
         # Filter testable and sort by urgency
-        testable_items = [item for item in items if item.score.urgency != NOT_EXPIRED_LOW_URGENCY]
-        testable_items.sort(key=lambda x: x.score.urgency)
+        testable_items = [(term, score) for term, score in items if score.urgency != NOT_EXPIRED_LOW_URGENCY]
+        testable_items.sort(key=lambda x: x[1].urgency)
         return testable_items[:limit]
     
-    def update_score(self, term: str, language: str, new_status: str, new_date: str) -> None:
+    def update_score(self, vocab_term: VocabularyTerm, new_status: str, new_date: str) -> None:
         """Update score for a specific term"""
-        item = self.get_item(term, language)
-        if item:
-            item.score.update_score(new_status, new_date)
-    
-    def to_dict_list(self) -> List[dict]:
-        """Convert to legacy dictionary list format for backward compatibility"""
-        return [item.to_dict() for item in self.data.values()]
-
+        score = self.get_score(vocab_term)
+        if score:
+            score.update_score(new_status, new_date)
 
 def _get_google_credentials() -> Credentials:
     """
@@ -204,7 +172,7 @@ def fetch_data() -> VocabularyDatabase:
     """
     Fetches the vocabulary data from the Google Sheet and returns it as a VocabularyDatabase.
     
-    The database contains VocabularyItem objects with both vocabulary terms and score data.
+    The database maps VocabularyTerm objects to VocabularyScore objects directly.
     For backward compatibility, you can call .to_dict_list() on the returned database.
     
     :return: VocabularyDatabase instance containing all vocabulary with score information
@@ -245,17 +213,17 @@ def fetch_data() -> VocabularyDatabase:
             migrated_status = LevelSystem.migrate_old_status(old_status)
             date_val = score_info.get('date')
             urgency = LevelSystem.calculate_urgency(migrated_status, date_val)
-            score_data = ScoreData(migrated_status, date_val, urgency)
+            score_data = VocabularyScore(migrated_status, date_val, urgency)
         else:
             # Default Red-1 for new terms
             urgency = LevelSystem.calculate_urgency('Red-1', None)
-            score_data = ScoreData('Red-1', None, urgency)
+            score_data = VocabularyScore('Red-1', None, urgency)
         
         # Add to database
         vocab_db.add_vocabulary_item(vocab_term, score_data)
     
-    vocab_with_scores = len([item for item in vocab_db.data.values() 
-                           if item.score.status != 'Red-1' or item.score.date])
+    vocab_with_scores = len([score for score in vocab_db.data.values() 
+                           if score.status != 'Red-1' or score.date])
     print(f"Processed {vocab_with_scores} vocabulary items with score history")
     
     return vocab_db
