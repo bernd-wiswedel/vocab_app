@@ -23,10 +23,13 @@
             </div>
             <p><strong>{{ label_term }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
             {% if show_translation %}
-                {% if comment_key %}
+                {% if comment_key and current_data[language_key] != 'Englisch' %}
                     <p><strong>Zusatz:</strong> {{ current_data[comment_key] }}</p>
                 {% endif %}
                 <p><strong>{{ label_translation }}:</strong> {{ current_data[translation_key] if show_term else current_data[term_key] }}</p>
+                {% if comment_key and current_data[language_key] == 'Englisch' and current_data[comment_key] %}
+                    <p><strong>Zusatz:</strong> {{ current_data[comment_key] }}</p>
+                {% endif %}
             {% endif %}
         </div>
         <div class="button-container">

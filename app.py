@@ -257,7 +257,7 @@ def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
         label_translation = 'Translation'
         label_term = 'Term'
 
-    show_comment = language != 'Englisch'  # Only show comments for non-English languages
+    show_comment = True  # Always show comments during testing
 
     return {
         'label_language': label_language,
