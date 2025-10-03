@@ -28,6 +28,10 @@ jobs:
         pip install pip-audit safety
         pip install -r requirements.txt
         
+    - name: Validate Python version requirement
+      run: |
+        python check_python_version.py
+        
     - name: Run security audit
       run: |
         echo "Running security audit..."

@@ -27,31 +27,15 @@ def get_python_version() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 def check_python_compatibility(package_name: str, version: str) -> bool:
-    """Check if a package version is compatible with current Python version."""
-    try:
-        # Get package info
-        success, output = run_command(["pip", "show", f"{package_name}=={version}"])
-        if not success:
-            # Try to get info from PyPI
-            success, output = run_command(["pip", "index", "versions", package_name])
-        
-        # This is a simplified check - in practice, you'd need to query PyPI API
-        # For now, we'll just warn about known problematic packages
-        problematic_versions = {
-            "numpy": {"2.3.0": ">=3.11", "2.3.1": ">=3.11", "2.3.2": ">=3.11"},
-            "pandas": {"2.3.0": ">=3.11", "2.3.1": ">=3.11", "2.3.2": ">=3.11"}
-        }
-        
-        if package_name in problematic_versions:
-            if version in problematic_versions[package_name]:
-                current_python = f"{sys.version_info.major}.{sys.version_info.minor}"
-                required_python = problematic_versions[package_name][version].replace(">=", "")
-                if current_python < required_python:
-                    return False
-        
-        return True
-    except:
-        return True  # Assume compatible if we can't check
+    """Check if a package version is compatible with current Python version.
+    
+    Since we only support Python 3.12+, all modern packages should be compatible.
+    """
+    # With Python 3.12+ requirement, all modern packages are compatible
+    if sys.version_info < (3, 12):
+        print(f"⚠️  Python {get_python_version()} detected. This project requires Python 3.12+")
+        return False
+    return True
 
 def check_outdated_packages() -> None:
     """Check for outdated packages."""
@@ -66,23 +50,10 @@ def check_outdated_packages() -> None:
                 python_incompatible = []
                 
                 for pkg in outdated:
-                    latest_version = pkg['latest_version']
-                    is_compatible = check_python_compatibility(pkg['name'], latest_version)
-                    
-                    if is_compatible:
-                        print(f"  ✅ {pkg['name']}: {pkg['version']} → {latest_version}")
-                    else:
-                        python_incompatible.append(pkg)
-                        print(f"  ⚠️  {pkg['name']}: {pkg['version']} → {latest_version} (requires Python >=3.11)")
+                    print(f"  📦 {pkg['name']}: {pkg['version']} → {pkg['latest_version']}")
                 
-                if python_incompatible:
-                    print(f"\n⚠️  {len(python_incompatible)} packages require Python >=3.11:")
-                    print("   Consider upgrading Python or using compatible versions")
-                    
-                compatible_packages = [pkg for pkg in outdated if check_python_compatibility(pkg['name'], pkg['latest_version'])]
-                if compatible_packages:
-                    print("\nTo update compatible packages:")
-                    print("  pip install --upgrade " + " ".join([pkg['name'] for pkg in compatible_packages]))
+                print("\nTo update all packages:")
+                print("  pip install --upgrade " + " ".join([pkg['name'] for pkg in outdated]))
             else:
                 print("✅ All packages are up to date!")
         except json.JSONDecodeError:
@@ -137,19 +108,12 @@ def check_requirements_file() -> None:
         print(f"  - {len(pinned)} packages with exact versions")
         print(f"  - {len(unpinned)} packages without exact versions")
         
-        # Check for Python compatibility issues
-        incompatible_packages = []
-        for pkg_line in pinned:
-            if "==" in pkg_line:
-                name, version = pkg_line.split("==")
-                if not check_python_compatibility(name, version):
-                    incompatible_packages.append(pkg_line)
-        
-        if incompatible_packages:
-            print(f"\n⚠️  {len(incompatible_packages)} packages may be incompatible with Python {get_python_version()}:")
-            for pkg in incompatible_packages:
-                print(f"    - {pkg}")
-            print("   Consider upgrading Python to 3.11+ or using compatible versions")
+        # Verify Python 3.12+ requirement
+        if sys.version_info < (3, 12):
+            print(f"\n❌ This project requires Python 3.12+, but you're using {get_python_version()}")
+            print("   Please upgrade your Python version")
+        else:
+            print(f"\n✅ Python {get_python_version()} meets the 3.12+ requirement")
         
         if unpinned:
             print("⚠️  Consider pinning these packages for reproducible builds:")
@@ -175,8 +139,10 @@ def main():
     print("  4. Keep your requirements.txt file up to date")
     print("  5. Use Dependabot for automated dependency updates")
     print(f"  6. Current Python version: {get_python_version()}")
-    if sys.version_info < (3, 11):
-        print("  7. ⚠️  Consider upgrading to Python 3.11+ for latest package versions")
+    if sys.version_info < (3, 12):
+        print("  7. ❌ This project requires Python 3.12+. Please upgrade your Python version")
+    else:
+        print("  7. ✅ Python version meets project requirements (3.12+)")
 
 if __name__ == "__main__":
     main()

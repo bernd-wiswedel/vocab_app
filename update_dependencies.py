@@ -55,7 +55,9 @@ def get_outdated_packages() -> List[Dict]:
     
     if success:
         try:
-            return json.loads(output)
+            outdated_packages = json.loads(output)
+            # With Python 3.12+ requirement, all packages are compatible
+            return outdated_packages
         except json.JSONDecodeError:
             return []
     return []
@@ -121,6 +123,15 @@ def main():
     
     print("🔄 Vocab App Dependency Updater")
     print("=" * 40)
+    
+    # Check Python version requirement
+    if sys.version_info < (3, 12):
+        print(f"❌ This project requires Python 3.12+, but you're using {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+        print("Please upgrade Python before updating dependencies.")
+        print("See PYTHON_VERSION_POLICY.md for upgrade instructions.")
+        return 1
+    
+    print(f"✅ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} meets requirements")
     
     # Create backup
     if not backup_requirements():
