@@ -251,7 +251,7 @@ def review():
         header="Test Review",
         language=language,
         col_name_term=COL_NAME_TERM,
-        col_name_comment=COL_NAME_COMMENT if language != 'Englisch' else None,
+        col_name_comment=COL_NAME_COMMENT,  # Always show comment column
         col_name_translation=COL_NAME_TRANSLATION,
         correct_count=correct_count,
         wrong_count=wrong_count,
@@ -352,7 +352,7 @@ def _practice_on(filtered_data, selected_language, header, is_error_review=False
         header=header,
         language=selected_language,
         col_name_term=COL_NAME_TERM,
-        col_name_comment=COL_NAME_COMMENT if selected_language != 'Englisch' else None,
+        col_name_comment=COL_NAME_COMMENT,  # Always show comment column
         col_name_translation=COL_NAME_TRANSLATION,
         is_error_review=is_error_review
     )
