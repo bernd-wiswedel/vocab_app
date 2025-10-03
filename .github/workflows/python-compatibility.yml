@@ -1,0 +1,65 @@
+name: Python Compatibility Check
+
+on:
+  pull_request:
+    paths:
+      - 'requirements.txt'
+      - 'runtime.txt'
+  push:
+    paths:
+      - 'requirements.txt'
+      - 'runtime.txt'
+
+jobs:
+  compatibility-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Test dependency installation
+      run: |
+        python -m pip install --upgrade pip
+        echo "Testing Python ${{ matrix.python-version }} compatibility..."
+        pip install -r requirements.txt
+        
+    - name: Run basic import test
+      run: |
+        python -c "
+        import sys
+        print(f'Python version: {sys.version}')
+        
+        # Test critical imports
+        try:
+            import flask
+            import pandas
+            import numpy
+            print('✅ All critical packages imported successfully')
+        except ImportError as e:
+            print(f'❌ Import error: {e}')
+            sys.exit(1)
+        "
+        
+    - name: Check for deprecation warnings
+      run: |
+        python -W error::DeprecationWarning -c "
+        import warnings
+        warnings.simplefilter('error', DeprecationWarning)
+        
+        try:
+            import flask
+            import pandas  
+            import numpy
+            print('✅ No deprecation warnings')
+        except DeprecationWarning as e:
+            print(f'⚠️  Deprecation warning: {e}')
+        " || echo "⚠️  Some deprecation warnings found"

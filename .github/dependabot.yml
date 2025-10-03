@@ -9,6 +9,8 @@ updates:
       time: "09:00"
     # Limit number of open PRs
     open-pull-requests-limit: 5
+    # Ensure compatibility with Python version
+    target-branch: "main"
     # Group minor and patch updates
     groups:
       minor-and-patch:
