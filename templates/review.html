@@ -82,8 +82,8 @@
     <!-- Action Buttons -->
     <div class="action-buttons">
         <form action="/test_errors" method="post">
-            <button type="submit" {% if wrong_count == 0 %}disabled{% endif %}>
-                <i class="fas fa-redo"></i> Fehler neu testen ({{ wrong_count }})
+            <button type="submit" {% if wrong_count + skipped_count == 0 %}disabled{% endif %}>
+                <i class="fas fa-redo"></i> Unvollständige neu testen ({{ wrong_count + skipped_count }})
             </button>
         </form>
         <form action="/write_scores" method="post">

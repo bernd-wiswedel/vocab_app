@@ -55,7 +55,7 @@
     {% if is_error_review %}
     <div class="action-buttons">
         <form action="/test_errors" method="post">
-            <button type="submit">Fehler neu testen</button>
+            <button type="submit">Unvollständige neu testen</button>
         </form>
         <form action="/write_scores" method="post" onsubmit="handleWriteScores(this.querySelector('button'))">
             <button type="submit">Ergebnisse in Google Sheets speichern</button>
