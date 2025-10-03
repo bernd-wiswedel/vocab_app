@@ -17,18 +17,9 @@
     <div class="wrapper-container">
         <div class="content-container">
             <div class="status-info">
-                {% set status_parts = current_data.current_status.split('-') %}
-                {% set status_color = 'red' if status_parts[0] == 'Red' else ('yellow' if status_parts[0] == 'Yellow' else 'green') %}
-                <div class="status-box status-{{ status_color }}">
-                    {% if current_data.current_status == 'Red-1' %}
-                        &infin;
-                    {% elif current_data.days_until_expire is not none %}
-                        {{ current_data.days_until_expire }}d
-                    {% else %}
-                        ?
-                    {% endif %}
-                </div>
-                <div style="font-size: 11px; color: #666;">{{ current_data.current_status }}</div>
+                {% with item = current_data %}
+                    {% include '_status_display.html' %}
+                {% endwith %}
             </div>
             <p><strong>{{ label_term }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
             {% if show_translation %}
