@@ -350,15 +350,20 @@ def test_errors():
     return redirect(url_for('test'))
 
 def _get_position_in_test() -> int:
-    skipped = session.get('skipped_answers', 0)
-    correct = session.get('correct_answers', 0)
-    wrong = session.get('wrong_answers', 0)
-    total_answered = correct + wrong + skipped
-    return total_answered % len(session['test_data'])
-
-def _get_data_at_position(position: int) -> Dict[str, Any]:
-    return session['test_data'][session['order'][position]]
-
+    """Get the position of the next term to show, or -1 if all terms have been answered"""
+    correct_answers = session.get('correct_answers', 0)
+    wrong_answers = session.get('wrong_answers', 0)
+    skipped_answers = session.get('skipped_answers', 0)
+    total_answered = correct_answers + wrong_answers + skipped_answers
+    test_data = session.get('test_data', [])
+    test_data_length = len(test_data)
+    
+    if total_answered >= test_data_length:
+        return -1  # All terms have been answered
+    
+    # Use randomized order if available, otherwise sequential
+    order = session.get('order', list(range(test_data_length)))
+    return order[total_answered]
 
 @app.route('/test')
 @require_auth
@@ -367,10 +372,19 @@ def test():
         return redirect(url_for('index'))
 
     position = _get_position_in_test()
-    if position == 0:
+    
+    # If all terms have been answered, redirect to review failures or index
+    if position == -1:
+        if session.get('list_of_wrong_answers'):
+            return redirect(url_for('review_failures'))
+        else:
+            return redirect(url_for('index'))
+    
+    # Initialize randomized order on first access
+    if not session.get('order'):
         session['order'] = random_order(len(session['test_data']))
     
-    current_data = _get_data_at_position(position)
+    current_data = session['test_data'][position]
     language = current_data[COL_NAME_LANGUAGE]
     show_term = session.get('show_term', True)
 
@@ -438,9 +452,17 @@ def show_translation():
 @require_auth
 def check_answer():
     """Handle the user's response during testing with level system progression."""
-    # Capture the current test position before counters are modified
+    # Get current position to identify the term being answered
     position = _get_position_in_test()
-    current_data = _get_data_at_position(position)
+    if position == -1:
+        # No more terms, redirect appropriately
+        if session.get('list_of_wrong_answers'):
+            return redirect(url_for('review_failures'))
+        else:
+            return redirect(url_for('index'))
+    
+    # Get the current term data directly by position
+    current_data = session['test_data'][position]
 
     answer_correct = request.form['answer_correct'] == 'Richtig'
     
@@ -451,12 +473,10 @@ def check_answer():
     # Process the answer through the level system
     new_level, new_date = LevelSystem.process_answer(current_level, answer_correct, last_test_date)
     
-    # Update the item in session data using direct position access instead of search
-    if 'test_data' in session and 'order' in session:
-        # Get the actual index in the test_data array using the current position
-        actual_index = session['order'][position]
-        session['test_data'][actual_index]['score_status'] = new_level
-        session['test_data'][actual_index]['score_date'] = new_date
+    # Update the item in session data using direct position access
+    if 'test_data' in session:
+        session['test_data'][position]['score_status'] = new_level
+        session['test_data'][position]['score_date'] = new_date
         
         # Also update in vocab_data if it exists in session
         vocab_db = session.get('vocab_data')
@@ -531,9 +551,11 @@ def switch_direction():
 @app.route('/skip_question', methods=['POST'])
 @require_auth
 def skip_question():
-    """Skip current question and advance to next without changing score"""
-    # Increment skip counter to advance position
+    """Skip current question and mark it as shown without changing score"""
+    # Increment skip counter
     session['skipped_answers'] = session.get('skipped_answers', 0) + 1
+    # Note: The term is already marked as shown when the test page loads,
+    # so skipping just moves to the next unshown term
     return redirect(url_for('test'))
 
 @app.route('/write_scores', methods=['POST'])
