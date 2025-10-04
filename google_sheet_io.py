@@ -94,7 +94,7 @@ class VocabularyDatabase:
         return [(term, score) for term, score in self.data.items() 
                 if term.language == language and term.category == category]
     
-    def get_testable_terms(self, language: str = None, category: str = None, limit: int = 10000) -> List[Tuple[VocabularyTerm, VocabularyScore]]:
+    def get_testable_terms(self, language: str = None, category: str = None, limit: int = 10000, guest_mode: bool = False) -> List[Tuple[VocabularyTerm, VocabularyScore]]:
         """Get terms ready for testing, filtered and sorted by urgency"""
         items = list(self.data.items())
         
@@ -104,10 +104,14 @@ class VocabularyDatabase:
         if category:
             items = [(term, score) for term, score in items if term.category == category]
         
-        # Filter testable and sort by urgency
-        testable_items = [(term, score) for term, score in items if score.urgency != NOT_EXPIRED_LOW_URGENCY]
-        testable_items.sort(key=lambda x: x[1].urgency)
-        return testable_items[:limit]
+        if guest_mode:
+            # In guest mode, return all terms regardless of urgency
+            return items[:limit]
+        else:
+            # Filter testable and sort by urgency
+            testable_items = [(term, score) for term, score in items if score.urgency != NOT_EXPIRED_LOW_URGENCY]
+            testable_items.sort(key=lambda x: x[1].urgency)
+            return testable_items[:limit]
     
     def update_score(self, vocab_term: VocabularyTerm, new_status: str, new_date: str) -> None:
         """Update score for a specific term"""

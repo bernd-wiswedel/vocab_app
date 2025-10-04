@@ -9,8 +9,15 @@
 </head>
 <body>
     <div class="header">
-        <h1>{{ header }}</h1>
-        <a href="{{ url_for('index') }}">Zurück</a>
+        <div>
+            <h1>{{ header }}</h1>
+            <a href="{{ url_for('index') }}">Zurück</a>
+        </div>
+        {% if guest_mode %}
+        <div class="guest-indicator">
+            Gast-Modus (keine Speicherung)
+        </div>
+        {% endif %}
     </div>
     
     <!-- Summary Stats -->
@@ -70,7 +77,11 @@
                             {% endif %}
                             <td>{{ item[col_name_translation] }}</td>
                             <td>
-                                {% include '_status_display.html' %}
+                                {% if not guest_mode %}
+                                    {% include '_status_display.html' %}
+                                {% else %}
+                                    -
+                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}
@@ -86,11 +97,13 @@
                 <i class="fas fa-redo"></i> Unvollständige neu testen ({{ wrong_count + skipped_count }})
             </button>
         </form>
+        {% if not guest_mode %}
         <form action="/write_scores" method="post">
             <button type="submit">
                 <i class="fas fa-save"></i> Ergebnisse speichern
             </button>
         </form>
+        {% endif %}
     </div>
 </body>
 </html>
