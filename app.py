@@ -70,6 +70,14 @@ def require_auth(f):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        # Check if this is a guest login
+        if 'guest_login' in request.form:
+            session['authenticated'] = True
+            session['guest_mode'] = True
+            session['failed_attempts'] = 0
+            return redirect(url_for('loading_data', source='guest'))
+        
+        # Regular password login
         password = request.form.get('password')
         failed_attempts = session.get('failed_attempts', 0)
         last_attempt_time = session.get('last_attempt_time', 0)
@@ -84,6 +92,7 @@ def login():
         
         if password == LOGIN_PASSWORD:
             session['authenticated'] = True
+            session['guest_mode'] = False
             session['failed_attempts'] = 0
             # Redirect to loading page to fetch vocabulary data
             return redirect(url_for('loading_data', source='login'))
@@ -105,7 +114,8 @@ def logout():
 @require_auth
 def index():
     languages = ['Latein', 'Englisch']
-    return render_template('index.html', languages=languages)
+    guest_mode = session.get('guest_mode', False)
+    return render_template('index.html', languages=languages, guest_mode=guest_mode)
 
 @app.route('/get_categories')
 @require_auth
@@ -131,12 +141,14 @@ def get_categories():
 def reload_data():
     # Preserve authentication and failed attempts data
     authenticated = session.get('authenticated', False)
+    guest_mode = session.get('guest_mode', False)
     failed_attempts = session.get('failed_attempts', 0)
     last_attempt_time = session.get('last_attempt_time', 0)
     
     session.clear()
     
     session['authenticated'] = authenticated
+    session['guest_mode'] = guest_mode
     session['failed_attempts'] = failed_attempts
     session['last_attempt_time'] = last_attempt_time
     
@@ -235,6 +247,7 @@ def review():
     
     # Get language for header
     language = test_data[0].get(COL_NAME_LANGUAGE, 'Unknown') if test_data else 'Unknown'
+    guest_mode = session.get('guest_mode', False)
     
     return render_template(
         'review.html',
@@ -247,7 +260,8 @@ def review():
         correct_count=correct_count,
         wrong_count=wrong_count,
         skipped_count=skipped_count,
-        total_count=len(test_data)
+        total_count=len(test_data),
+        guest_mode=guest_mode
     )
 
 def _add_status_info_to_data(current_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -317,9 +331,12 @@ def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
     }
     
 def _practice_on(filtered_data, selected_language, header, is_error_review=False):
-    # Add status information to each item
-    for item in filtered_data:
-        item.update(_add_status_info_to_data(item))
+    guest_mode = session.get('guest_mode', False)
+    
+    # Add status information to each item (but skip in guest mode)
+    if not guest_mode:
+        for item in filtered_data:
+            item.update(_add_status_info_to_data(item))
     
     # create a transformation filter_data_grouped so that we can group the data by category
     filtered_data_grouped = {}
@@ -345,7 +362,8 @@ def _practice_on(filtered_data, selected_language, header, is_error_review=False
         col_name_term=COL_NAME_TERM,
         col_name_comment=COL_NAME_COMMENT,  # Always show comment column
         col_name_translation=COL_NAME_TRANSLATION,
-        is_error_review=is_error_review
+        is_error_review=is_error_review,
+        guest_mode=guest_mode
     )
 
 def random_order(length: int) -> List[int]:
@@ -358,11 +376,12 @@ def start_test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
     vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
+    guest_mode = session.get('guest_mode', False)
     
     # Use the new database method to get filtered and testable terms
     testable_items = []
     for category in selected_categories:
-        category_items = vocab_db.get_testable_terms(language=selected_language, category=category)
+        category_items = vocab_db.get_testable_terms(language=selected_language, category=category, guest_mode=guest_mode)
         testable_items.extend(category_items)
     
     # Convert to dict format and add test_result field to each term
@@ -473,6 +492,7 @@ def test():
     correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
     wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
     skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
+    guest_mode = session.get('guest_mode', False)
 
     return render_template(
         'test.html',
@@ -491,7 +511,8 @@ def test():
         show_term=show_term,
         label_language=labels['label_language'],
         label_translation=labels['label_translation'],
-        label_term=labels['label_term']
+        label_term=labels['label_term'],
+        guest_mode=guest_mode
     )
 
 @app.route('/show_translation', methods=['POST'])
@@ -518,6 +539,7 @@ def show_translation():
     correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
     wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
     skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
+    guest_mode = session.get('guest_mode', False)
 
     return render_template(
         'test.html',
@@ -536,7 +558,8 @@ def show_translation():
         show_term=show_term,
         label_language=labels['label_language'],
         label_translation=labels['label_translation'],
-        label_term=labels['label_term']
+        label_term=labels['label_term'],
+        guest_mode=guest_mode
     )
 
 @app.route('/check_answer', methods=['POST'])
@@ -553,17 +576,7 @@ def check_answer():
     current_data = session['test_data'][position]
 
     answer_correct = request.form['answer_correct'] == 'Richtig'
-    
-    # Get current level information
-    current_level = current_data.get('score_status', 'Red-1')
-    last_test_date = current_data.get('score_date')
-    
-    # Process the answer through the level system
-    new_level, new_date = LevelSystem.process_answer(current_level, answer_correct, last_test_date)
-    
-    # Update the item in session data using direct position access
-    session['test_data'][position]['score_status'] = new_level
-    session['test_data'][position]['score_date'] = new_date
+    guest_mode = session.get('guest_mode', False)
     
     # Update test result in the term
     if answer_correct:
@@ -571,22 +584,35 @@ def check_answer():
     else:
         session['test_data'][position]['test_result'] = 'wrong'
     
-    # Update in vocab_data if it exists in session
-    vocab_db = session.get('vocab_data')
-    if vocab_db:
-        # Create temporary VocabularyTerm for direct lookup
-        temp_vocab_term = VocabularyTerm(
-            term=current_data.get(COL_NAME_TERM),
-            translation=current_data.get(COL_NAME_TRANSLATION),
-            language=current_data.get(COL_NAME_LANGUAGE),
-            category=current_data.get(COL_NAME_CATEGORY),
-            comment=current_data.get(COL_NAME_COMMENT, '')
-        )
+    # Only update levels and scores in non-guest mode
+    if not guest_mode:
+        # Get current level information
+        current_level = current_data.get('score_status', 'Red-1')
+        last_test_date = current_data.get('score_date')
         
-        # Direct lookup using the VocabularyTerm as key
-        vocab_score = vocab_db.get_score(temp_vocab_term)
-        if vocab_score:
-            vocab_db.update_score(temp_vocab_term, new_level, new_date)
+        # Process the answer through the level system
+        new_level, new_date = LevelSystem.process_answer(current_level, answer_correct, last_test_date)
+        
+        # Update the item in session data using direct position access
+        session['test_data'][position]['score_status'] = new_level
+        session['test_data'][position]['score_date'] = new_date
+        
+        # Update in vocab_data if it exists in session
+        vocab_db = session.get('vocab_data')
+        if vocab_db:
+            # Create temporary VocabularyTerm for direct lookup
+            temp_vocab_term = VocabularyTerm(
+                term=current_data.get(COL_NAME_TERM),
+                translation=current_data.get(COL_NAME_TRANSLATION),
+                language=current_data.get(COL_NAME_LANGUAGE),
+                category=current_data.get(COL_NAME_CATEGORY),
+                comment=current_data.get(COL_NAME_COMMENT, '')
+            )
+            
+            # Direct lookup using the VocabularyTerm as key
+            vocab_score = vocab_db.get_score(temp_vocab_term)
+            if vocab_score:
+                vocab_db.update_score(temp_vocab_term, new_level, new_date)
 
     # Advance position to next unanswered term
     session['current_position'] = session.get('current_position', 0) + 1
@@ -624,6 +650,8 @@ def switch_direction():
     wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
     skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
 
+    guest_mode = session.get('guest_mode', False)
+
     return render_template(
         'test.html',
         current_data=current_data,
@@ -641,7 +669,8 @@ def switch_direction():
         show_term=show_term,
         label_language=labels['label_language'],
         label_translation=labels['label_translation'],
-        label_term=labels['label_term']
+        label_term=labels['label_term'],
+        guest_mode=guest_mode
     )
 
 @app.route('/skip_question', methods=['POST'])
@@ -664,6 +693,12 @@ def skip_question():
 @require_auth
 def write_scores():
     """Write vocabulary scores to Google Sheets"""
+    guest_mode = session.get('guest_mode', False)
+    
+    # Redirect guest users away from score writing
+    if guest_mode:
+        return redirect(url_for('index'))
+    
     test_data = session.get('test_data', [])
     if not test_data:
         return redirect(url_for('index'))

@@ -13,6 +13,11 @@
             <h1>Test</h1>
             <a href="{{ url_for('index') }}">Zurück</a>
         </div>
+        {% if guest_mode %}
+        <div class="guest-indicator">
+            Gast-Modus (keine Speicherung)
+        </div>
+        {% endif %}
     </div>
     <div class="wrapper-container">
         <!-- Progress Bar -->
@@ -37,11 +42,13 @@
         </div>
         
         <div class="content-container">
+            {% if not guest_mode %}
             <div class="status-info">
                 {% with item = current_data %}
                     {% include '_status_display.html' %}
                 {% endwith %}
             </div>
+            {% endif %}
             <p><strong>{{ label_term }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
             {% if show_translation %}
                 {% if comment_key and current_data[language_key] != 'Englisch' %}

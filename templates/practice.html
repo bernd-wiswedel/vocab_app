@@ -7,8 +7,17 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <h1>{{ header }}</h1>
-    <a href="{{ url_for('index') }}">Zurück</a>
+    <div class="header">
+        <div>
+            <h1>{{ header }}</h1>
+            <a href="{{ url_for('index') }}">Zurück</a>
+        </div>
+        {% if guest_mode %}
+        <div class="guest-indicator">
+            Gast-Modus (keine Speicherung)
+        </div>
+        {% endif %}
+    </div>
     <div class="table-responsive">
         <table class="practice-table">
             <thead>
@@ -34,7 +43,11 @@
                             {% endif %}
                             <td>{{ item[col_name_translation] }}</td>
                             <td>
-                                {% include '_status_display.html' %}
+                                {% if not guest_mode %}
+                                    {% include '_status_display.html' %}
+                                {% else %}
+                                    -
+                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}

@@ -70,6 +70,11 @@
 <body>
     <div class="header">
         <h1>Jakobs WortSpaß</h1>
+        {% if guest_mode %}
+            <div class="guest-indicator">
+                🎭 Gast-Modus (keine Speicherung)
+            </div>
+        {% endif %}
         <a href="/logout" class="logout-button">Abmelden</a>
     </div>
     
