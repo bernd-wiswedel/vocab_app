@@ -611,10 +611,18 @@ def switch_direction():
     # Add status info to current_data
     current_data = _add_status_info_to_data(current_data)
 
-    # Calculate progress information (same as in test route)
-    total_terms = len(session.get('test_data', []))
-    completed_terms = session.get('correct_answers', 0) + session.get('wrong_answers', 0) + session.get('skipped_answers', 0)
+    # Calculate progress information based on current position in order (same as in test route)
+    order = session.get('order', [])
+    current_position = session.get('current_position', 0)
+    total_terms = len(order)
+    completed_terms = current_position
     progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
+    
+    # Also calculate counts for display
+    test_data = session.get('test_data', [])
+    correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
+    wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
+    skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
 
     return render_template(
         'test.html',
@@ -623,9 +631,9 @@ def switch_direction():
         language_key=COL_NAME_LANGUAGE,
         comment_key=COL_NAME_COMMENT,
         translation_key=COL_NAME_TRANSLATION,
-        correct_count=session['correct_answers'],
-        wrong_count=session['wrong_answers'],
-        skipped_count=session.get('skipped_answers', 0),
+        correct_count=correct_count,
+        wrong_count=wrong_count,
+        skipped_count=skipped_count,
         total_terms=total_terms,
         completed_terms=completed_terms,
         progress_percentage=progress_percentage,
