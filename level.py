@@ -100,6 +100,35 @@ class LevelSystem:
         return cls.LEVEL_BY_NAME.get(level_name, cls.LEVELS[0])  # Default to Red-1
     
     @classmethod
+    def is_valid_level(cls, level_name: str) -> bool:
+        """Check if a level name is valid."""
+        return level_name in cls.LEVEL_BY_NAME
+    
+    @classmethod
+    def get_valid_levels(cls) -> List[str]:
+        """Get list of all valid level names."""
+        return list(cls.LEVEL_BY_NAME.keys())
+    
+    @classmethod
+    def validate_and_sanitize_status(cls, status: str, last_test_date: str = None) -> str:
+        """
+        Validate status value and return a sanitized version.
+        
+        :param status: The status to validate
+        :param last_test_date: When the term was last tested (for expiry check)
+        :return: Valid status (defaults to Red-1 if invalid or expired)
+        """
+        # Check if status is valid
+        if not cls.is_valid_level(status):
+            return "Red-1"  # Default to Red-1 for invalid status
+        
+        # Check if status has expired (fallen back to Red-1)
+        if last_test_date and cls.is_expired(status, last_test_date):
+            return "Red-1"
+        
+        return status
+    
+    @classmethod
     def get_next_level(cls, current_level: str) -> Optional[str]:
         """Get the next level name for escalation."""
         current_index = cls.LEVEL_INDEX.get(current_level, 0)
@@ -213,26 +242,6 @@ class LevelSystem:
         # Correct but too soon - stay at current level with updated date
         return current_level, today
     
-    @classmethod
-    def migrate_old_status(cls, old_status: str) -> str:
-        """
-        Migrate old status values to new level system.
-        
-        :param old_status: Old status value ('red', None, etc.)
-        :return: New level name
-        """
-        if old_status == 'red':
-            return "Red-1"
-        elif old_status is None:
-            return "Red-1"  # Untested terms start at Red-1
-        else:
-            # If it's already a level name, keep it
-            if old_status in cls.LEVEL_BY_NAME:
-                return old_status
-            else:
-                return "Red-1"  # Default fallback
-
-
 def get_testable_terms(vocab_data: List[Dict], max_terms: int = 10000) -> List[Dict]:
     """
     Select terms for testing based on eligibility and urgency.

@@ -226,12 +226,12 @@ def fetch_data() -> VocabularyDatabase:
         term_key = vocab_term.term
         if term_key in scores:
             score_info = scores[term_key]
-            old_status = score_info.get('status')
-            # Migrate old status to new level system
-            migrated_status = LevelSystem.migrate_old_status(old_status)
+            raw_status = score_info.get('status')
             date_val = score_info.get('date')
-            urgency = LevelSystem.calculate_urgency(migrated_status, date_val)
-            score_data = VocabularyScore(migrated_status, date_val, urgency)
+            
+            status = LevelSystem.validate_and_sanitize_status(raw_status, date_val)
+            urgency = LevelSystem.calculate_urgency(status, date_val)
+            score_data = VocabularyScore(status, date_val, urgency)
         else:
             # Default Red-1 for new terms
             urgency = LevelSystem.calculate_urgency('Red-1', None)
