@@ -47,11 +47,14 @@
             <thead>
                 <tr>
                     <th class="result-column">Result</th>
-                    <th>{{ col_name_term }}</th>
-                    {% if col_name_comment %}
+                    <th>{{ language }}</th>
+                    {% if language == 'Latein' %}
                         <th>{{ col_name_comment }}</th>
                     {% endif %}
                     <th>{{ col_name_translation }}</th>
+                    {% if language == 'Englisch' %}
+                        <th>{{ col_name_comment }}</th>
+                    {% endif %}
                     <th>Status</th>
                 </tr>
             </thead>
@@ -72,10 +75,13 @@
                                 {% endif %}
                             </td>
                             <td>{{ item[col_name_term] }}</td>
-                            {% if col_name_comment %}
+                            {% if language == 'Latein' %}
                                 <td>{{ item[col_name_comment] }}</td>
                             {% endif %}
                             <td>{{ item[col_name_translation] }}</td>
+                            {% if language == 'Englisch' %}
+                                <td>{{ item[col_name_comment] }}</td>
+                            {% endif %}
                             <td>
                                 {% if not guest_mode %}
                                     {% include '_status_display.html' %}
