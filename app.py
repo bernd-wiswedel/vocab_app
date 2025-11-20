@@ -136,6 +136,69 @@ def get_categories():
         categories = []
     return jsonify(categories=categories)
 
+@app.route('/get_lesson_stats')
+@require_auth
+def get_lesson_stats():
+    """Get detailed lesson statistics for the table view"""
+    language = request.args.get('language')
+    if not language:
+        return jsonify(lessons=[])
+    
+    vocab_db = get_vocab_data()
+    items = vocab_db.get_by_language(language)
+    guest_mode = session.get('guest_mode', False)
+    
+    # Group by category and calculate statistics
+    lesson_stats = {}
+    for term, score in items:
+        category = term.category
+        if not category:
+            continue
+            
+        if category not in lesson_stats:
+            lesson_stats[category] = {
+                'title': category,
+                'count': 0,
+                'best_status': LevelSystem.LEVELS[0].name,  # First level (lowest)
+                'worst_status': LevelSystem.LEVELS[-1].name,  # Last level (highest)
+                'min_urgency_days': 999999,
+                'statuses': []
+            }
+        
+        lesson_stats[category]['count'] += 1
+        lesson_stats[category]['statuses'].append(score.status)
+        
+        # Track best status (highest level)
+        current_best = lesson_stats[category]['best_status']
+        if LevelSystem.LEVEL_INDEX.get(score.status, 0) > LevelSystem.LEVEL_INDEX.get(current_best, 0):
+            lesson_stats[category]['best_status'] = score.status
+            
+        # Track worst status (lowest level)
+        current_worst = lesson_stats[category]['worst_status']
+        if LevelSystem.LEVEL_INDEX.get(score.status, 0) < LevelSystem.LEVEL_INDEX.get(current_worst, 0):
+            lesson_stats[category]['worst_status'] = score.status
+            
+        # Calculate minimum urgency (most urgent = lowest days)
+        if not guest_mode and score.urgency and hasattr(score.urgency, 'days_until_expiry'):
+            if score.urgency.days_until_expiry < lesson_stats[category]['min_urgency_days']:
+                lesson_stats[category]['min_urgency_days'] = score.urgency.days_until_expiry
+    
+    # Convert to list with index
+    lessons = []
+    for i, (category, stats) in enumerate(lesson_stats.items(), 1):
+        urgency_days = stats['min_urgency_days'] if stats['min_urgency_days'] != 999999 else None
+        lessons.append({
+            'index': i,
+            'category': category,
+            'title': stats['title'],
+            'count': stats['count'],
+            'best_status': stats['best_status'],
+            'worst_status': stats['worst_status'],
+            'urgency_days': urgency_days if not guest_mode else None
+        })
+    
+    return jsonify(lessons=lessons)
+
 @app.route('/reload_data', methods=['POST'])
 @require_auth
 def reload_data():

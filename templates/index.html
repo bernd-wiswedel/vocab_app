@@ -9,38 +9,54 @@
     <script>
         function updateCategories() {
             const language = document.getElementById('language').value;
-            fetch(`/get_categories?language=${language}`)
+            fetch(`/get_lesson_stats?language=${language}`)
                 .then(response => response.json())
                 .then(data => {
-                    const categoriesSelect = document.getElementById('categories');
-                    categoriesSelect.innerHTML = '';
-                    data.categories.forEach(category => {
-                        const option = document.createElement('option');
-                        option.value = category;
-                        option.textContent = category;
-                        categoriesSelect.appendChild(option);
+                    const tableBody = document.getElementById('lessons-table-body');
+                    tableBody.innerHTML = '';
+                    data.lessons.forEach(lesson => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${lesson.index}</td>
+                            <td><input type="checkbox" name="lesson-checkbox" value="${lesson.category}" onchange="updateSelectedLessons()"></td>
+                            <td>${lesson.title}</td>
+                            <td>${lesson.count}</td>
+                            <td>
+                                <i class="fas fa-circle status-icon status-${lesson.best_status.toLowerCase().replace('-', '')}"></i>
+                                <i class="fas fa-circle status-icon status-${lesson.worst_status.toLowerCase().replace('-', '')}"></i>
+                            </td>
+                            <td>${lesson.urgency_days !== null ? lesson.urgency_days + ' Tage' : '-'}</td>
+                        `;
+                        tableBody.appendChild(row);
                     });
                 });
+        }
+        
+        function updateSelectedLessons() {
+            const checkboxes = document.querySelectorAll('input[name="lesson-checkbox"]:checked');
+            const selectedCategories = Array.from(checkboxes).map(cb => cb.value);
+            sessionStorage.setItem('categories', JSON.stringify(selectedCategories));
         }
 
         function saveFormData() {
             const language = document.getElementById('language').value;
-            const categories = Array.from(document.getElementById('categories').selectedOptions).map(option => option.value);
+            const checkboxes = document.querySelectorAll('input[name="lesson-checkbox"]:checked');
+            const categories = Array.from(checkboxes).map(cb => cb.value);
             sessionStorage.setItem('language', language);
             sessionStorage.setItem('categories', JSON.stringify(categories));
         }
 
         function loadFormData() {
             const language = sessionStorage.getItem('language');
-            const categories = JSON.parse(sessionStorage.getItem('categories'));
+            const categories = JSON.parse(sessionStorage.getItem('categories')) || [];
             if (language) {
                 document.getElementById('language').value = language;
                 updateCategories();
-                setTimeout(() => { // Wait for categories to be populated
+                setTimeout(() => { // Wait for lessons to be populated
                     categories.forEach(category => {
-                        const option = document.querySelector(`#categories option[value='${category}']`);
-                        if (option) {
-                            option.selected = true;
+                        const checkbox = document.querySelector(`input[name="lesson-checkbox"][value="${category}"]`);
+                        if (checkbox) {
+                            checkbox.checked = true;
                         }
                     });
                 }, 500);
@@ -59,7 +75,8 @@
                 form.addEventListener('submit', function(event) {
                     saveFormData();
                     const language = document.getElementById('language').value;
-                    const categories = Array.from(document.getElementById('categories').selectedOptions).map(option => option.value);
+                    const checkboxes = document.querySelectorAll('input[name="lesson-checkbox"]:checked');
+                    const categories = Array.from(checkboxes).map(cb => cb.value);
                     this.querySelector('input[name="language"]').value = language;
                     this.querySelector('input[name="categories"]').value = categories.join(',');
                 });
@@ -89,12 +106,26 @@
         </select>
     </div>
 
-    <!-- Category Selection -->
-    <div>
-        <label for="categories">Lektionen:</label>
-        <select name="categories" id="categories" multiple>
-            <!-- Categories will be populated by JavaScript based on selected language -->
-        </select>
+    <!-- Lesson Selection Table -->
+    <div class="lesson-selection">
+        <h3>Lektionen:</h3>
+        <div class="table-responsive">
+            <table class="lesson-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
+                        <th>Titel</th>
+                        <th>Anzahl</th>
+                        <th>Status</th>
+                        <th>Dringlichkeit</th>
+                    </tr>
+                </thead>
+                <tbody id="lessons-table-body">
+                    <!-- Lessons will be populated by JavaScript based on selected language -->
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- Practice, Test and Reload Buttons -->
