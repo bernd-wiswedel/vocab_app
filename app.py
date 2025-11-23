@@ -6,7 +6,7 @@ import os
 from datetime import timedelta
 from typing import List, Dict, Any, Tuple
 from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore
-from level import LevelSystem
+from level import LevelSystem, RED_1_LOW_URGENCY, NOT_EXPIRED_LOW_URGENCY
 from flask import Flask
 from flask_session import Session
 import time
@@ -164,24 +164,32 @@ def get_lesson_stats():
                 'min_urgency_days': 999999,
                 'statuses': []
             }
+        if (category == 'Wohnen im alten Rom'):
+            lesson_stats[category]['count'] += 0
         
         lesson_stats[category]['count'] += 1
         lesson_stats[category]['statuses'].append(score.status)
         
         # Track best status (highest level)
-        current_best = lesson_stats[category]['best_status']
-        if LevelSystem.LEVEL_INDEX.get(score.status, 0) > LevelSystem.LEVEL_INDEX.get(current_best, 0):
+        current_best_index = LevelSystem.LEVEL_INDEX.get(lesson_stats[category]['best_status'], 0)
+        current_score_index = LevelSystem.LEVEL_INDEX.get(score.status, 0)
+        if current_score_index > current_best_index:
             lesson_stats[category]['best_status'] = score.status
             
         # Track worst status (lowest level)
-        current_worst = lesson_stats[category]['worst_status']
-        if LevelSystem.LEVEL_INDEX.get(score.status, 0) < LevelSystem.LEVEL_INDEX.get(current_worst, 0):
+        current_worst_index = LevelSystem.LEVEL_INDEX.get(lesson_stats[category]['worst_status'], 0)
+        if current_score_index < current_worst_index:
             lesson_stats[category]['worst_status'] = score.status
             
         # Calculate minimum urgency (most urgent = lowest days)
-        if not guest_mode and score.urgency and hasattr(score.urgency, 'days_until_expiry'):
-            if score.urgency.days_until_expiry < lesson_stats[category]['min_urgency_days']:
-                lesson_stats[category]['min_urgency_days'] = score.urgency.days_until_expiry
+        # Only skip Red-1 and NOT_EXPIRED_LOW_URGENCY cases
+        if not guest_mode and score.urgency:
+            urgency_days = score.urgency.days_until_expiry
+            # Skip special urgency cases (Red-1 and not-ready items)
+            if (score.urgency != RED_1_LOW_URGENCY and 
+                score.urgency != NOT_EXPIRED_LOW_URGENCY and
+                urgency_days < lesson_stats[category]['min_urgency_days']):
+                lesson_stats[category]['min_urgency_days'] = urgency_days
     
     # Convert to list with index
     lessons = []

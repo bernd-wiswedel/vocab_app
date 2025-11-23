@@ -7,29 +7,100 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script>
+        let currentLessons = [];
+        let currentSortColumn = 'index'; // default sort by lesson index
+        let currentSortDirection = 'asc';
+        
         function updateCategories() {
             const language = document.getElementById('language').value;
             fetch(`/get_lesson_stats?language=${language}`)
                 .then(response => response.json())
                 .then(data => {
-                    const tableBody = document.getElementById('lessons-table-body');
-                    tableBody.innerHTML = '';
-                    data.lessons.forEach(lesson => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${lesson.index}</td>
-                            <td><input type="checkbox" name="lesson-checkbox" value="${lesson.category}" onchange="updateSelectedLessons()"></td>
-                            <td>${lesson.title}</td>
-                            <td>${lesson.count}</td>
-                            <td>
-                                <i class="fas fa-circle status-icon status-${lesson.best_status.toLowerCase().replace('-', '')}"></i>
-                                <i class="fas fa-circle status-icon status-${lesson.worst_status.toLowerCase().replace('-', '')}"></i>
-                            </td>
-                            <td>${lesson.urgency_days !== null ? lesson.urgency_days + ' Tage' : '-'}</td>
-                        `;
-                        tableBody.appendChild(row);
-                    });
+                    currentLessons = data.lessons;
+                    renderLessonsTable();
                 });
+        }
+        
+        function renderLessonsTable() {
+            const tableBody = document.getElementById('lessons-table-body');
+            tableBody.innerHTML = '';
+            
+            // Sort lessons based on current sort settings
+            const sortedLessons = [...currentLessons].sort((a, b) => {
+                let aValue, bValue;
+                
+                switch(currentSortColumn) {
+                    case 'index':
+                        aValue = a.index;
+                        bValue = b.index;
+                        break;
+                    case 'title':
+                        aValue = a.title.toLowerCase();
+                        bValue = b.title.toLowerCase();
+                        break;
+                    case 'count':
+                        aValue = a.count;
+                        bValue = b.count;
+                        break;
+                    case 'urgency':
+                        aValue = a.urgency_days !== null ? a.urgency_days : 999999;
+                        bValue = b.urgency_days !== null ? b.urgency_days : 999999;
+                        break;
+                    default:
+                        aValue = a.index;
+                        bValue = b.index;
+                }
+                
+                if (currentSortDirection === 'asc') {
+                    return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+                } else {
+                    return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+                }
+            });
+            
+            sortedLessons.forEach(lesson => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${lesson.index}</td>
+                    <td><input type="checkbox" name="lesson-checkbox" value="${lesson.category}" onchange="updateSelectedLessons()"></td>
+                    <td>${lesson.title}</td>
+                    <td>${lesson.count}</td>
+                    <td>
+                        <i class="fas fa-circle status-icon status-${lesson.best_status.toLowerCase().replace('-', '')}"></i>
+                        <i class="fas fa-circle status-icon status-${lesson.worst_status.toLowerCase().replace('-', '')}"></i>
+                    </td>
+                    <td>${lesson.urgency_days !== null ? lesson.urgency_days + ' Tage' : '-'}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+            
+            // Update sort indicators
+            updateSortIndicators();
+        }
+        
+        function sortBy(column) {
+            if (currentSortColumn === column) {
+                // Toggle direction if same column
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                // New column, default to ascending
+                currentSortColumn = column;
+                currentSortDirection = 'asc';
+            }
+            renderLessonsTable();
+        }
+        
+        function updateSortIndicators() {
+            // Reset all indicators
+            document.querySelectorAll('.sort-indicator').forEach(indicator => {
+                indicator.textContent = '';
+            });
+            
+            // Set current sort indicator
+            const indicator = document.getElementById(`sort-${currentSortColumn}`);
+            if (indicator) {
+                indicator.textContent = currentSortDirection === 'asc' ? ' ▲' : ' ▼';
+            }
         }
         
         function updateSelectedLessons() {
@@ -108,17 +179,22 @@
 
     <!-- Lesson Selection Table -->
     <div class="lesson-selection">
-        <h3>Lektionen:</h3>
+        <div class="lesson-header">
+            <h3>Lektionen:</h3>
+            <div class="sort-info">
+                <small class="text-muted">Klicke auf Spaltenüberschriften zum Sortieren</small>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="lesson-table">
                 <thead>
                     <tr>
-                        <th>#</th>
+                        <th class="sortable" onclick="sortBy('index')">#<span id="sort-index" class="sort-indicator"> ▲</span></th>
                         <th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
-                        <th>Titel</th>
-                        <th>Anzahl</th>
+                        <th class="sortable" onclick="sortBy('title')">Titel<span id="sort-title" class="sort-indicator"></span></th>
+                        <th class="sortable" onclick="sortBy('count')">Anzahl<span id="sort-count" class="sort-indicator"></span></th>
                         <th>Status</th>
-                        <th>Dringlichkeit</th>
+                        <th class="sortable" onclick="sortBy('urgency')">Dringlichkeit<span id="sort-urgency" class="sort-indicator"></span></th>
                     </tr>
                 </thead>
                 <tbody id="lessons-table-body">

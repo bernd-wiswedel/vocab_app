@@ -70,7 +70,6 @@ class VocabularyScore:
         self.urgency = LevelSystem.calculate_urgency(new_status, new_date)
 
 
-
 class VocabularyDatabase:
     """Main data container mapping VocabularyTerm -> VocabularyScore"""
     def __init__(self):

@@ -566,9 +566,21 @@ table tbody tr td.category-header {
     margin: 20px 0;
 }
 
-.lesson-selection h3 {
+.lesson-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 10px;
+}
+
+.lesson-header h3 {
+    margin: 0;
     color: #333;
+}
+
+.sort-info {
+    color: #6c757d;
+    font-size: 12px;
 }
 
 .lesson-table {
@@ -594,6 +606,22 @@ table tbody tr td.category-header {
 .lesson-table th {
     font-weight: bold;
     color: #495057;
+}
+
+.lesson-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.lesson-table th.sortable:hover {
+    background-color: #e9ecef;
+}
+
+.sort-indicator {
+    color: #007bff;
+    font-weight: bold;
+    font-size: 12px;
 }
 
 .lesson-table tbody tr:hover {
