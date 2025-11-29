@@ -429,6 +429,27 @@ a:hover {
     text-align: center;
 }
 
+.review-table .selection-column {
+    width: 60px;
+    text-align: center;
+}
+
+.selection-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.selection-cell input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.selection-cell input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
 .result-indicator {
     text-align: center;
     width: 40px;

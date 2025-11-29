@@ -6,6 +6,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script>
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('select-all');
+            const itemCheckboxes = document.querySelectorAll('input[name="selected-items"]:not(:disabled)');
+            itemCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+            updateSaveButton();
+        }
+        
+        function updateSaveButton() {
+            const selectedItems = document.querySelectorAll('input[name="selected-items"]:checked');
+            const saveButton = document.getElementById('save-button');
+            
+            if (selectedItems.length > 0) {
+                saveButton.disabled = false;
+                saveButton.innerHTML = `<i class="fas fa-save"></i> ${selectedItems.length} Ergebnisse speichern`;
+            } else {
+                saveButton.disabled = true;
+                saveButton.innerHTML = '<i class="fas fa-save"></i> Keine Auswahl';
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize save button state
+            updateSaveButton();
+            
+            // Add change listeners to all checkboxes
+            const checkboxes = document.querySelectorAll('input[name="selected-items"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', updateSaveButton);
+            });
+        });
+    </script>
 </head>
 <body>
     <div class="header">
@@ -42,12 +76,19 @@
         </div>
     </div>
 
-    <div class="table-responsive">
-        <table class="review-table">
-            <thead>
-                <tr>
-                    <th class="result-column">Result</th>
-                    <th>{{ language }}</th>
+    <!-- Single form wrapping everything -->
+    <form action="/write_scores" method="post">
+        <div class="table-responsive">
+            <table class="review-table">
+                <thead>
+                    <tr>
+                        <th class="result-column">Ergebnis</th>
+                        {% if not guest_mode %}
+                        <th class="selection-column">
+                            <input type="checkbox" id="select-all" onchange="toggleSelectAll()" title="Alle auswählen">
+                        </th>
+                        {% endif %}
+                    <th>{{ col_name_term }}</th>
                     {% if language == 'Latein' %}
                         <th>{{ col_name_comment }}</th>
                     {% endif %}
@@ -60,8 +101,9 @@
             </thead>
             <tbody>
                 {% for category, items in vocab_data.items() %}
+                    {% set category_index = loop.index0 %}
                     <tr>
-                        <td colspan="5" class="category-header">{{ category }}</td>
+                        <td colspan="{% if not guest_mode %}7{% else %}6{% endif %}" class="category-header">{{ category }}</td>
                     </tr>
                     {% for item in items %}
                         <tr class="result-row result-{{ item.test_result }}">
@@ -74,6 +116,18 @@
                                     <i class="fas fa-forward result-icon skipped-icon"></i>
                                 {% endif %}
                             </td>
+                            {% if not guest_mode %}
+                            <td class="selection-cell">
+                                {% if item.test_result in ['correct', 'wrong'] %}
+                                    <input type="checkbox" name="selected-items" 
+                                           value="{{ item[col_name_term] }}|{{ item[col_name_translation] }}|{{ language }}" 
+                                           checked 
+                                           title="Zum Speichern auswählen">
+                                {% else %}
+                                    <input type="checkbox" disabled title="Übersprungene Einträge können nicht gespeichert werden">
+                                {% endif %}
+                            </td>
+                            {% endif %}
                             <td>{{ item[col_name_term] }}</td>
                             {% if language == 'Latein' %}
                                 <td>{{ item[col_name_comment] }}</td>
@@ -96,20 +150,23 @@
         </table>
     </div>
 
-    <!-- Action Buttons -->
+    <!-- Action Buttons inside the form -->
     <div class="action-buttons">
-        <form action="/test_errors" method="post">
-            <button type="submit" {% if wrong_count + skipped_count == 0 %}disabled{% endif %}>
-                <i class="fas fa-redo"></i> Unvollständige neu testen ({{ wrong_count + skipped_count }})
-            </button>
-        </form>
         {% if not guest_mode %}
-        <form action="/write_scores" method="post">
-            <button type="submit">
-                <i class="fas fa-save"></i> Ergebnisse speichern
-            </button>
-        </form>
+        <button id="save-button" type="submit" name="action" value="save" disabled>
+            <i class="fas fa-save"></i> Keine Auswahl
+        </button>
         {% endif %}
     </div>
+</form>
+
+<!-- Separate form for retry button -->
+<form action="/test_errors" method="post" style="display: inline;">
+    <div class="action-buttons">
+        <button type="submit" {% if wrong_count + skipped_count == 0 %}disabled{% endif %}>
+            <i class="fas fa-redo"></i> Unvollständige neu testen ({{ wrong_count + skipped_count }})
+        </button>
+    </div>
+</form>
 </body>
 </html>

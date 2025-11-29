@@ -770,16 +770,47 @@ def write_scores():
     if guest_mode:
         return redirect(url_for('index'))
     
+    # Check if this is a save action (from review page)
+    action = request.form.get('action')
+    if action != 'save':
+        return redirect(url_for('index'))
+    
     test_data = session.get('test_data', [])
     if not test_data:
         return redirect(url_for('index'))
-    
+
     try:
-        # Filter for items that were actually answered (not skipped)
-        answered_items = [
-            item for item in test_data 
-            if item.get('test_result') in ['correct', 'wrong']
-        ]
+        # Get selected items from form data
+        selected_items = request.form.getlist('selected-items')
+        
+        if selected_items:
+            # Parse selected items (format: "term|translation|language")
+            selected_set = set()
+            for item_str in selected_items:
+                parts = item_str.split('|')
+                if len(parts) == 3:
+                    selected_set.add((parts[0], parts[1], parts[2]))
+            
+            # Filter test_data to only include selected items
+            answered_items = []
+            for item in test_data:
+                if item.get('test_result') not in ['correct', 'wrong']:
+                    continue
+                    
+                item_key = (
+                    item.get(COL_NAME_TERM, ''),
+                    item.get(COL_NAME_TRANSLATION, ''),
+                    item.get(COL_NAME_LANGUAGE, '')
+                )
+                
+                if item_key in selected_set:
+                    answered_items.append(item)
+        else:
+            # No selection provided, use all answered items (backward compatibility)
+            answered_items = [
+                item for item in test_data 
+                if item.get('test_result') in ['correct', 'wrong']
+            ]
         
         if not answered_items:
             return redirect(url_for('index'))
