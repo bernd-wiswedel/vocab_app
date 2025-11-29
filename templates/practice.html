@@ -18,11 +18,12 @@
         </div>
         {% endif %}
     </div>
+    
     <div class="table-responsive">
         <table class="practice-table">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
+                    <th><input type="checkbox" id="select-all"></th>
                     <th>{{ language }}</th>
                     {% if language == 'Latein' %}
                         <th>{{ col_name_comment }}</th>
@@ -40,8 +41,8 @@
                         <td colspan="5" class="category-header">{{ category }}</td>
                     </tr>
                     {% for item in items %}
-                        <tr>
-                            <td><input type="checkbox" name="item-checkbox" value="{{ item[col_name_term] }}|{{ item[col_name_translation] }}|{{ language }}" onchange="updateTestButton()"></td>
+                        <tr class="item-row" data-row-index="{{ loop.index0 }}">
+                            <td class="checkbox-cell"><input type="checkbox" name="item-checkbox" value="{{ item[col_name_term] }}|{{ item[col_name_translation] }}|{{ language }}"></td>
                             <td>{{ item[col_name_term] }}</td>
                             {% if language == 'Latein' %}
                                 <td>{{ item[col_name_comment] }}</td>
@@ -51,10 +52,10 @@
                                 <td>{{ item[col_name_comment] }}</td>
                             {% endif %}
                             <td>
-                                {% if not guest_mode %}
-                                    {% include '_status_display.html' %}
-                                {% else %}
+                                {% if guest_mode is defined and guest_mode %}
                                     -
+                                {% else %}
+                                    {% include '_status_display.html' %}
                                 {% endif %}
                             </td>
                         </tr>
@@ -64,6 +65,13 @@
         </table>
     </div>
     <div class="action-buttons">
+        <button type="button" id="range-mode-btn" onclick="toggleRangeMode()" class="range-mode-button">
+            📏 Bereichsauswahl
+        </button>
+        <div id="range-instruction" class="range-instruction" style="display:none">
+            <span class="range-instruction-text">Tippe Start und Ende</span>
+            <button type="button" onclick="exitRangeMode()" class="btn-small">Fertig</button>
+        </div>
         <form id="test-selected-form" action="/test_selected" method="post">
             <input type="hidden" name="selected-items" id="selected-items-input">
             <button type="submit" id="test-selected-button" disabled>Ausgewählte testen</button>
@@ -71,35 +79,219 @@
     </div>
 
     <script>
-        function toggleSelectAll() {
-            const selectAll = document.getElementById('select-all');
-            const checkboxes = document.querySelectorAll('input[name="item-checkbox"]');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAll.checked;
-            });
-            updateTestButton();
-        }
-
-        function updateTestButton() {
-            const checkboxes = document.querySelectorAll('input[name="item-checkbox"]:checked');
-            const button = document.getElementById('test-selected-button');
-            button.disabled = checkboxes.length === 0;
-        }
-
-        function handleWriteScores(button) {
-            // Disable the button to prevent multiple submissions
-            button.disabled = true;
-
-            // Change button text and add a spinning icon
-            button.innerHTML = '<span class="spinner"></span> Speichern...';
-        }
-
-        // Set up form submission to include selected items
-        document.getElementById('test-selected-form').addEventListener('submit', function(e) {
-            const checkboxes = document.querySelectorAll('input[name="item-checkbox"]:checked');
-            const selectedItems = Array.from(checkboxes).map(cb => cb.value);
-            document.getElementById('selected-items-input').value = selectedItems.join('||');
-        });
+        // ========================================
+        // Vocabulary Practice Selection Module
+        // ========================================
+        (function() {
+            'use strict';
+            
+            // ========================================
+            // State Management
+            // ========================================
+            const state = {
+                rangeMode: false,
+                rangeStart: null,
+                lastChecked: null
+            };
+            
+            // ========================================
+            // Constants
+            // ========================================
+            const SELECTORS = {
+                checkbox: 'input[name="item-checkbox"]',
+                selectAll: '#select-all',
+                testButton: '#test-selected-button',
+                rangeModeBtn: '#range-mode-btn',
+                rangeInstruction: '#range-instruction',
+                testForm: '#test-selected-form',
+                selectedItemsInput: '#selected-items-input'
+            };
+            
+            // ========================================
+            // Utility Functions
+            // ========================================
+            
+            function getAllCheckboxes() {
+                return Array.from(document.querySelectorAll(SELECTORS.checkbox));
+            }
+            
+            function getCheckedCheckboxes() {
+                return document.querySelectorAll(SELECTORS.checkbox + ':checked');
+            }
+            
+            function updateTestButton() {
+                const button = document.querySelector(SELECTORS.testButton);
+                button.disabled = getCheckedCheckboxes().length === 0;
+            }
+            
+            function clearRangeMarkers() {
+                document.querySelectorAll('.range-start').forEach(el => {
+                    el.classList.remove('range-start');
+                });
+            }
+            
+            // ========================================
+            // Range Selection Logic
+            // ========================================
+            
+            function handleRangeSelection(checkbox) {
+                const row = checkbox.closest('tr');
+                
+                if (!state.rangeStart) {
+                    // First tap - mark range start
+                    state.rangeStart = checkbox;
+                    checkbox.checked = true;
+                    row.classList.add('range-start');
+                    updateTestButton();
+                } else {
+                    // Second tap - complete range selection
+                    selectRangeBetween(state.rangeStart, checkbox);
+                    
+                    // Clean up range start marker
+                    const startRow = state.rangeStart.closest('tr');
+                    if (startRow) {
+                        startRow.classList.remove('range-start');
+                    }
+                    state.rangeStart = null;
+                }
+            }
+            
+            function selectRangeBetween(start, end) {
+                const checkboxes = getAllCheckboxes();
+                const startIdx = checkboxes.indexOf(start);
+                const endIdx = checkboxes.indexOf(end);
+                
+                if (startIdx === -1 || endIdx === -1) {
+                    console.error('Checkbox not found in list', {startIdx, endIdx});
+                    return;
+                }
+                
+                const minIdx = Math.min(startIdx, endIdx);
+                const maxIdx = Math.max(startIdx, endIdx);
+                
+                // Defer checkbox updates to avoid event handler conflicts
+                requestAnimationFrame(() => {
+                    for (let i = minIdx; i <= maxIdx; i++) {
+                        checkboxes[i].checked = true;
+                    }
+                    state.lastChecked = end;
+                    updateTestButton();
+                });
+            }
+            
+            // ========================================
+            // Range Mode Controls
+            // ========================================
+            
+            function toggleRangeMode() {
+                state.rangeMode = !state.rangeMode;
+                const btn = document.querySelector(SELECTORS.rangeModeBtn);
+                const instruction = document.querySelector(SELECTORS.rangeInstruction);
+                
+                if (state.rangeMode) {
+                    btn.classList.add('active');
+                    instruction.style.display = 'flex';
+                } else {
+                    exitRangeMode();
+                }
+            }
+            
+            function exitRangeMode() {
+                state.rangeMode = false;
+                state.rangeStart = null;
+                document.querySelector(SELECTORS.rangeModeBtn).classList.remove('active');
+                document.querySelector(SELECTORS.rangeInstruction).style.display = 'none';
+                clearRangeMarkers();
+            }
+            
+            // ========================================
+            // Checkbox Event Handlers
+            // ========================================
+            
+            function handleCheckboxClick(event) {
+                const checkbox = event.target;
+                
+                if (state.rangeMode) {
+                    event.preventDefault();
+                    handleRangeSelection(checkbox);
+                } else if (event.shiftKey && state.lastChecked) {
+                    event.preventDefault();
+                    checkbox.checked = !checkbox.checked;
+                    selectRangeBetween(state.lastChecked, checkbox);
+                } else {
+                    state.lastChecked = checkbox;
+                    requestAnimationFrame(updateTestButton);
+                }
+            }
+            
+            function handleSelectAll(event) {
+                const selectAll = event.target;
+                getAllCheckboxes().forEach(checkbox => {
+                    checkbox.checked = selectAll.checked;
+                });
+                updateTestButton();
+            }
+            
+            // ========================================
+            // Form Submission
+            // ========================================
+            
+            function handleFormSubmit(event) {
+                const checkedCheckboxes = getCheckedCheckboxes();
+                
+                if (checkedCheckboxes.length === 0) {
+                    event.preventDefault();
+                    return;
+                }
+                
+                const selectedItems = Array.from(checkedCheckboxes).map(cb => cb.value);
+                document.querySelector(SELECTORS.selectedItemsInput).value = selectedItems.join('||');
+            }
+            
+            // ========================================
+            // Initialization
+            // ========================================
+            
+            function init() {
+                // Attach checkbox listeners
+                getAllCheckboxes().forEach(checkbox => {
+                    checkbox.addEventListener('click', handleCheckboxClick);
+                });
+                
+                // Attach select-all listener
+                const selectAll = document.querySelector(SELECTORS.selectAll);
+                if (selectAll) {
+                    selectAll.addEventListener('change', handleSelectAll);
+                }
+                
+                // Attach form listener
+                const form = document.querySelector(SELECTORS.testForm);
+                if (form) {
+                    form.addEventListener('submit', handleFormSubmit);
+                }
+                
+                // Initial button state
+                updateTestButton();
+            }
+            
+            // ========================================
+            // Export to global scope (for inline handlers)
+            // ========================================
+            
+            window.toggleRangeMode = toggleRangeMode;
+            window.exitRangeMode = exitRangeMode;
+            window.handleWriteScores = function(button) {
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner"></span> Speichern...';
+            };
+            
+            // Initialize when DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
     </script>
 
     {% if is_error_review %}

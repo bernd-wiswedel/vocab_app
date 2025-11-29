@@ -446,9 +446,7 @@ def random_order(length: int) -> List[int]:
 def test_selected():
     """Start a test with selected items from the practice page"""
     selected_items_str = request.form.get('selected-items', '')
-    print(f"DEBUG: selected_items_str = '{selected_items_str}'")
     if not selected_items_str:
-        print("DEBUG: No selected items string")
         return redirect(url_for('index'))
     
     # Parse selected items (format: "term|translation|language" separated by ||)
@@ -459,9 +457,7 @@ def test_selected():
         if len(parts) == 3:
             selected_set.add((parts[0], parts[1], parts[2]))
     
-    print(f"DEBUG: selected_set has {len(selected_set)} items")
     if not selected_set:
-        print("DEBUG: Empty selected set")
         return redirect(url_for('index'))
     
     # Get vocabulary database and filter to selected items
@@ -478,9 +474,7 @@ def test_selected():
                 testable_items.append((db_term, db_score))
                 break
     
-    print(f"DEBUG: Found {len(testable_items)} testable items")
     if not testable_items:
-        print("DEBUG: No testable items found")
         return redirect(url_for('index'))
     
     # Convert to dict format and add test_result field
@@ -495,7 +489,6 @@ def test_selected():
     session['current_position'] = 0
     session['show_term'] = True
     
-    print(f"DEBUG: Redirecting to test with {len(testable_terms)} terms")
     return redirect(url_for('test'))
 
 @app.route('/start_test', methods=['POST'])
