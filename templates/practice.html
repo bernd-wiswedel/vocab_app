@@ -22,6 +22,7 @@
         <table class="practice-table">
             <thead>
                 <tr>
+                    <th><input type="checkbox" id="select-all" onchange="toggleSelectAll()"></th>
                     <th>{{ language }}</th>
                     {% if language == 'Latein' %}
                         <th>{{ col_name_comment }}</th>
@@ -36,10 +37,11 @@
             <tbody>
                 {% for category, items in vocab_data.items() %}
                     <tr>
-                        <td colspan="4" class="category-header">{{ category }}</td>
+                        <td colspan="5" class="category-header">{{ category }}</td>
                     </tr>
                     {% for item in items %}
                         <tr>
+                            <td><input type="checkbox" name="item-checkbox" value="{{ item[col_name_term] }}|{{ item[col_name_translation] }}|{{ language }}" onchange="updateTestButton()"></td>
                             <td>{{ item[col_name_term] }}</td>
                             {% if language == 'Latein' %}
                                 <td>{{ item[col_name_comment] }}</td>
@@ -61,7 +63,29 @@
             </tbody>
         </table>
     </div>
+    <div class="action-buttons">
+        <form id="test-selected-form" action="/test_selected" method="post">
+            <input type="hidden" name="selected-items" id="selected-items-input">
+            <button type="submit" id="test-selected-button" disabled>Ausgewählte testen</button>
+        </form>
+    </div>
+
     <script>
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('select-all');
+            const checkboxes = document.querySelectorAll('input[name="item-checkbox"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+            updateTestButton();
+        }
+
+        function updateTestButton() {
+            const checkboxes = document.querySelectorAll('input[name="item-checkbox"]:checked');
+            const button = document.getElementById('test-selected-button');
+            button.disabled = checkboxes.length === 0;
+        }
+
         function handleWriteScores(button) {
             // Disable the button to prevent multiple submissions
             button.disabled = true;
@@ -69,10 +93,17 @@
             // Change button text and add a spinning icon
             button.innerHTML = '<span class="spinner"></span> Speichern...';
         }
+
+        // Set up form submission to include selected items
+        document.getElementById('test-selected-form').addEventListener('submit', function(e) {
+            const checkboxes = document.querySelectorAll('input[name="item-checkbox"]:checked');
+            const selectedItems = Array.from(checkboxes).map(cb => cb.value);
+            document.getElementById('selected-items-input').value = selectedItems.join('||');
+        });
     </script>
 
     {% if is_error_review %}
-    <div class="action-buttons">
+    <div class="action-buttons" style="margin-top: 20px;">
         <form action="/test_errors" method="post">
             <button type="submit">Unvollständige neu testen</button>
         </form>

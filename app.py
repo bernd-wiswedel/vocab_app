@@ -441,6 +441,63 @@ def random_order(length: int) -> List[int]:
     return random.sample(range(length), length)
 
 
+@app.route('/test_selected', methods=['POST'])
+@require_auth
+def test_selected():
+    """Start a test with selected items from the practice page"""
+    selected_items_str = request.form.get('selected-items', '')
+    print(f"DEBUG: selected_items_str = '{selected_items_str}'")
+    if not selected_items_str:
+        print("DEBUG: No selected items string")
+        return redirect(url_for('index'))
+    
+    # Parse selected items (format: "term|translation|language" separated by ||)
+    selected_items = selected_items_str.split('||')
+    selected_set = set()
+    for item_str in selected_items:
+        parts = item_str.split('|')
+        if len(parts) == 3:
+            selected_set.add((parts[0], parts[1], parts[2]))
+    
+    print(f"DEBUG: selected_set has {len(selected_set)} items")
+    if not selected_set:
+        print("DEBUG: Empty selected set")
+        return redirect(url_for('index'))
+    
+    # Get vocabulary database and filter to selected items
+    vocab_db = get_vocab_data()
+    
+    # Convert selected set to list of vocab items
+    testable_items = []
+    for term, translation, language in selected_set:
+        # Find the full term data from database directly
+        for db_term, db_score in vocab_db.data.items():
+            if (db_term.term == term and 
+                db_term.translation == translation and 
+                db_term.language == language):
+                testable_items.append((db_term, db_score))
+                break
+    
+    print(f"DEBUG: Found {len(testable_items)} testable items")
+    if not testable_items:
+        print("DEBUG: No testable items found")
+        return redirect(url_for('index'))
+    
+    # Convert to dict format and add test_result field
+    testable_terms = _convert_vocab_tuples_to_dict(testable_items)
+    
+    # Initialize all terms as "skipped" (default state)
+    for term in testable_terms:
+        term['test_result'] = 'skipped'
+    
+    session['test_data'] = testable_terms
+    session['order'] = random_order(len(testable_terms))
+    session['current_position'] = 0
+    session['show_term'] = True
+    
+    print(f"DEBUG: Redirecting to test with {len(testable_terms)} terms")
+    return redirect(url_for('test'))
+
 @app.route('/start_test', methods=['POST'])
 @require_auth
 def start_test():
