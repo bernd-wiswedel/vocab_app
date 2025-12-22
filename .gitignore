@@ -10,8 +10,3 @@ htmlcov/
 *.cover
 .hypothesis/
 *.pyc
-
-# Temporary downloaded files
-*.whl
-extracted_*/
-tmp_*/
