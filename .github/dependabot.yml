@@ -31,6 +31,3 @@ updates:
       # Example: ignore major version updates for stable dependencies
       - dependency-name: "Flask"
         update-types: ["version-update:semver-major"]
-      # Lock google-auth-oauthlib at 1.2.2 to maintain compatibility with google-auth 2.45.0+
-      # Version 1.2.3 has constraint google-auth<2.42.0 which conflicts with our pinned version
-      - dependency-name: "google-auth-oauthlib"
