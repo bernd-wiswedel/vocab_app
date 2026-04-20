@@ -7,7 +7,7 @@ itsdangerous==2.2.0
 Jinja2==3.1.6
 MarkupSafe==3.0.3
 numpy==2.4.4
-packaging==26.0
+packaging==26.1
 pandas==3.0.2
 python-dateutil==2.9.0.post0
 pytz==2026.1.post1
