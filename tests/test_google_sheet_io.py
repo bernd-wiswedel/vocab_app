@@ -349,37 +349,6 @@ class TestFetchDataFromGoogleSheet:
         assert result[1]['Kategorie'] == 'Lektion 1'
 
 
-class TestFetchData:
-    """Test the main fetch_data function (integration with real Google Sheets)."""
-    
-    @pytest.mark.slow
-    def test_fetch_data_real_sheets(self):
-        """Test fetching data from actual Google Sheets.
-        
-        This test reads from the real Google Sheets to ensure
-        the integration works correctly.
-        """
-        # This will make actual API calls to Google Sheets
-        vocab_db = fetch_data()
-        
-        # Basic validation - just check we got some data
-        assert isinstance(vocab_db, VocabularyDatabase)
-        assert len(vocab_db.data) > 0
-        
-        # Verify we have both languages
-        latin_items = vocab_db.get_by_language('Latein')
-        english_items = vocab_db.get_by_language('Englisch')
-        assert len(latin_items) > 0
-        assert len(english_items) > 0
-        
-        # Check first item has valid structure
-        first_term, first_score = next(iter(vocab_db.data.items()))
-        assert isinstance(first_term, VocabularyTerm)
-        assert isinstance(first_score, VocabularyScore)
-        assert first_term.term != ''
-        assert first_term.translation != ''
-
-
 class TestWriteScoresToSheet:
     """Test the write_scores_to_sheet function."""
     

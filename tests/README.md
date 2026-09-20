@@ -123,12 +123,15 @@ pytest --cov=level --cov=google_sheet_io --cov=app --cov-report=term-missing
 
 ### Real API Tests
 
-Some tests in `test_google_sheet_io.py` make **actual calls** to Google Sheets:
-- `test_fetch_data_real_sheets()`: Reads from production sheets to verify integration
+`test_sheets_contract.py` makes **actual calls** to Google Sheets, against a dedicated fixture
+spreadsheet of invented vocabulary - never a learner's sheet. It is the only cover the Google
+boundary has: tab names, gids, the A:C layout, `values.batchUpdate`, auth. The tests put the
+sheet back as they found it.
 
-These tests are marked with `@pytest.mark.slow` and can be skipped:
+They are marked `sheets`, are not part of any automated run, and skip without credentials. Run
+them by hand after changing `google_sheet_io.py`:
 ```bash
-pytest -m "not slow"
+pytest -m sheets
 ```
 
 ### Mocked Write Operations

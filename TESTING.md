@@ -46,7 +46,7 @@ A comprehensive test suite has been created for the vocabulary learning applicat
   - Insertion order preservation
 - **CSV Parsing**: Header skipping, category auto-fill, blank term filtering, NaN handling
 - **Google Sheets Integration**:
-  - **Real reads** from production sheets (marked as slow tests)
+  - **Real reads and writes** against a fixture sheet (marked `sheets`, run by hand)
   - **Mocked writes** for safety
   - Batch update/append logic
   - Error handling
@@ -192,19 +192,25 @@ chmod +x run_tests.sh
 
 ## Google Sheets Testing Strategy
 
-### Reads: Real API Calls
+### The real API: `test_sheets_contract.py`
 
-Tests in `test_google_sheet_io.py::test_fetch_data_real_sheets()` make **actual reads** from production Google Sheets to verify:
-- CSV export parsing works correctly
-- Column name mapping is accurate
-- Category auto-fill logic works
-- Score fetching and merging succeeds
+These run against a dedicated fixture spreadsheet of invented vocabulary - never a learner's
+sheet - and are the only cover the Google boundary has:
+- the score tab is still named `Scores <Sprache> (<Name>)`
+- the vocabulary gids still point at the Latein and Englisch tabs
+- CSV export parsing, column mapping and category auto-fill
+- `values.batchUpdate` still updates an existing row and appends a new one
+- the service account still authenticates
 
-**Marked as `@pytest.mark.slow`** - skip with `pytest -m "not slow"`
+They restore the sheet afterwards, so they can be run repeatedly.
 
-### Writes: Fully Mocked
+**Marked `sheets`.** Not part of any automated run - they need the service-account key and write
+shared state. Run them by hand after changing `google_sheet_io.py`: `pytest -m sheets`. They skip
+without credentials.
 
-All write operations use mocked Google Sheets service to prevent accidental data modification:
+### Writes elsewhere: fully mocked
+
+Every other test mocks the Google Sheets service to prevent accidental data modification:
 - `@patch('google_sheet_io._get_sheets_service')`
 - Verifies correct API call structure
 - Tests update vs. append logic
