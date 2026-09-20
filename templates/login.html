@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WortSpaß - Login</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <style>
         .login-container {
             max-width: 400px;
@@ -28,6 +29,39 @@
             font-size: 16px;
         }
         
+        .password-wrapper {
+            position: relative;
+            display: flex;
+        }
+
+        .password-wrapper .login-input {
+            flex: 1;
+            padding-right: 44px;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 6px;
+            color: #666;
+        }
+
+        .password-toggle[aria-pressed="true"] {
+            color: #007bff;
+        }
+
+        .password-toggle:disabled {
+            cursor: not-allowed;
+            opacity: 0.4;
+        }
+
         .login-button {
             background-color: #007bff;
             color: white;
@@ -148,15 +182,21 @@
                 style="position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0;"
             >
             <label for="password">Passwort:</label>
-            <input
-                type="password"
-                id="password"
-                name="password"
-                class="login-input"
-                autocomplete="current-password"
-                required
-                {% if delay > 0 %}disabled{% endif %}
-            >
+            <div class="password-wrapper">
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    class="login-input"
+                    autocomplete="current-password"
+                    required
+                    {% if delay > 0 %}disabled{% endif %}
+                >
+                {# Chrome has no built-in reveal button (Edge does), so provide one #}
+                <button type="button" class="password-toggle" id="passwordToggle"
+                        aria-label="Passwort anzeigen" aria-pressed="false" title="Passwort anzeigen"
+                        {% if delay > 0 %}disabled{% endif %}>👁</button>
+            </div>
             <button
                 type="submit"
                 class="login-button"
@@ -189,6 +229,7 @@
                 countdown.style.display = 'none';
                 submitButton.disabled = false;
                 passwordInput.disabled = false;
+                document.getElementById('passwordToggle').disabled = false;
                 passwordInput.focus();
                 return;
             }
@@ -226,12 +267,25 @@
             usernameInput.value = userSelect.value;
         });
 
+        // Show / hide the password in plain text. (Named passwordField, not
+        // passwordInput: the countdown script above shares this global scope.)
+        const passwordField = document.getElementById('password');
+        const passwordToggle = document.getElementById('passwordToggle');
+        passwordToggle.addEventListener('click', function() {
+            const reveal = passwordField.type === 'password';
+            passwordField.type = reveal ? 'text' : 'password';
+            passwordToggle.setAttribute('aria-pressed', String(reveal));
+            const label = reveal ? 'Passwort verbergen' : 'Passwort anzeigen';
+            passwordToggle.setAttribute('aria-label', label);
+            passwordToggle.title = label;
+            passwordField.focus();
+        });
+
         // Auto-focus password field if not disabled
         window.addEventListener('load', function() {
             syncSelectFromUsername();
-            const passwordInput = document.getElementById('password');
-            if (!passwordInput.disabled) {
-                passwordInput.focus();
+            if (!passwordField.disabled) {
+                passwordField.focus();
             }
         });
     </script>
