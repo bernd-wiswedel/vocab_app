@@ -117,12 +117,6 @@ def _open_round(browser, server, guest=True, category=CATEGORY):
     # the loading page fetches the vocabulary, then forwards to the index
     page.wait_for_url(f"{server}/", timeout=15000)
 
-    # Wait for the index to go quiet before starting the round. Every request -
-    # a stylesheet or a favicon included - reads the whole session and writes it
-    # back, so a /start_test that overlaps with one of those still in flight has
-    # its test_data overwritten by the older snapshot and the round never starts.
-    page.wait_for_load_state("networkidle")
-
     page.request.post(
         f"{server}/start_test",
         form={"language": "Latein", "categories": category},

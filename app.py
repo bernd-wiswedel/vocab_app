@@ -18,6 +18,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = True
+# Save the session only when a request actually changed it. Flask defaults this
+# to True, which makes every request - a stylesheet or a favicon included - write
+# the whole session back from the snapshot it read; a request that overlaps one
+# that did change something then silently restores the older state. The routes
+# that mutate nested session data therefore have to set session.modified
+# themselves, because that mutation is invisible from the outside.
+app.config['SESSION_REFRESH_EACH_REQUEST'] = False
 app.config['SESSION_FILE_THRESHOLD'] = 250
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=10)
 # gettempdir() honors TMPDIR, so a sandbox with a read-only /tmp still gets a writable directory

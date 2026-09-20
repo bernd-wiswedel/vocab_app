@@ -74,6 +74,13 @@ it across its `session.clear()`. `is_authenticated()` also requires `session['us
 configured learner, so a stale or user-less session is simply logged out. Passwords are per
 learner (`LOGIN_PASSWORDS`, `None` = guest-only); a login POST without a valid `user` is rejected.
 
+`SESSION_REFRESH_EACH_REQUEST` is off, so the session is written only by requests that changed
+it. That is deliberate: Flask-Session writes the whole session back from the snapshot the request
+read, so with it on, any request — a stylesheet, a favicon — could undo a concurrent one that did
+change something. The cost is that a route mutating data *inside* the session (`test_data`
+entries, the `VocabularyDatabase`) has to set `session.modified = True` itself, because that
+mutation is invisible from the outside; `/finish_test` and `/write_scores` do.
+
 The session directory is `FLASK_SESSION_DIR`, defaulting to `<tempdir>/flask_session` where
 `tempdir` honors `TMPDIR` — that is what lets the app and the tests run inside a sandbox whose
 `/tmp` is read-only. `Session(app)` binds the directory at import time, so it can only be changed
