@@ -33,9 +33,11 @@ Each learner has their own Google Sheet with the same layout (tabs `Latein`,
 is chosen on the login page; `/login?user=<Name>` preselects one for
 bookmarking. (Sheet content is not AI'ed.)
 
-Sheets are registered in `USERS` in `google_sheet_io.py`; each learner's
-password comes from the environment variable `LOGIN_PASSWORD_<NAME>`. Plain
-`LOGIN_PASSWORD` still works as the default learner's password.
+Learners are configured in `configuration.ini`, one `[user:<Name>]` section
+with the `spreadsheet_id` each — nothing about them lives in the source code.
+Passwords are not in the file either: set `LOGIN_PASSWORD_<NAME>` in the
+environment for every learner (e.g. `LOGIN_PASSWORD_JAKOB`); a learner without
+one can only be browsed as a guest.
 
 ## Deployment
 

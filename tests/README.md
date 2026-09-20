@@ -141,6 +141,10 @@ Real API tests require valid Google credentials. Ensure you have:
 - Service account JSON key in `keys/` folder, OR
 - `GOOGLE_SERVICE_ACCOUNT_JSON` environment variable set
 
+The learners the tests see are defined in `conftest.py` (`TEST_USERS_CONFIG`,
+exported as `VOCAB_APP_CONFIG` before `app` is imported); the committed
+`configuration.ini` is never read by the test-suite.
+
 ## Key Test Fixtures
 
 Defined in `tests/conftest.py`:

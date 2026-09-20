@@ -7,10 +7,25 @@ from datetime import date, timedelta
 from collections import OrderedDict
 from flask import session
 
-# Flask-Session binds its directory when app.py is imported, so the test
-# session directory has to be chosen here, before that import.
+# Flask-Session binds its directory and config.py loads the learners when
+# app.py is imported, so both have to be set up here, before that import.
 _TEST_SESSION_DIR = tempfile.mkdtemp(prefix='vocab_app_test_session_')
 os.environ['FLASK_SESSION_DIR'] = _TEST_SESSION_DIR
+
+# Two made-up learners; VOCAB_APP_CONFIG being set keeps the real learners
+# of configuration.ini out of the tests.
+TEST_USERS_CONFIG = """
+[user:Alice]
+spreadsheet_id = alice-sheet-id
+password = alice_pw
+
+[user:Bob]
+spreadsheet_id = bob-sheet-id
+password = bob_pw
+"""
+os.environ['VOCAB_APP_CONFIG'] = TEST_USERS_CONFIG
+os.environ.pop('LOGIN_PASSWORD_ALICE', None)
+os.environ.pop('LOGIN_PASSWORD_BOB', None)
 
 from app import app as flask_app
 from google_sheet_io import VocabularyTerm, VocabularyScore, VocabularyDatabase
@@ -20,10 +35,6 @@ from level import LevelSystem, Urgency
 @pytest.fixture
 def app():
     """Create and configure a test Flask application."""
-    # Set environment variable for LOGIN_PASSWORD
-    original_password = os.environ.get('LOGIN_PASSWORD')
-    os.environ['LOGIN_PASSWORD'] = 'test_password'
-
     flask_app.config.update({
         'TESTING': True,
         'SECRET_KEY': 'test_secret_key',
@@ -31,12 +42,6 @@ def app():
     })
 
     yield flask_app
-
-    # Restore original password
-    if original_password is not None:
-        os.environ['LOGIN_PASSWORD'] = original_password
-    elif 'LOGIN_PASSWORD' in os.environ:
-        del os.environ['LOGIN_PASSWORD']
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -56,6 +61,7 @@ def authenticated_client(client):
     with client.session_transaction() as sess:
         sess['authenticated'] = True
         sess['guest_mode'] = False
+        sess['user'] = 'Alice'
     return client
 
 
@@ -65,6 +71,7 @@ def guest_client(client):
     with client.session_transaction() as sess:
         sess['authenticated'] = True
         sess['guest_mode'] = True
+        sess['user'] = 'Alice'
     return client
 
 

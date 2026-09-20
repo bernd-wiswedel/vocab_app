@@ -6,7 +6,8 @@ import os
 import tempfile
 from datetime import timedelta
 from typing import List, Dict, Any, Tuple
-from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore, USERS, DEFAULT_USER
+from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore, USERS
+from config import LEARNERS
 from level import LevelSystem, RED_1_LOW_URGENCY, NOT_EXPIRED_LOW_URGENCY
 from flask import Flask
 from flask_session import Session
@@ -22,14 +23,9 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=10)
 app.config['SESSION_FILE_DIR'] = os.environ.get('FLASK_SESSION_DIR', os.path.join(tempfile.gettempdir(), 'flask_session'))
 Session(app)
 
-# One password per learner, from LOGIN_PASSWORD_<NAME>. The unsuffixed
-# LOGIN_PASSWORD is kept as the fallback for the default user so existing
-# deployments keep working.
-LOGIN_PASSWORDS = {
-    name: os.environ.get(f'LOGIN_PASSWORD_{name.upper()}',
-                         os.environ.get('LOGIN_PASSWORD', 'password') if name == DEFAULT_USER else 'password')
-    for name in USERS
-}
+# One password per learner (LOGIN_PASSWORD_<NAME>, or a password key in
+# configuration.ini). None: that learner is guest-only.
+LOGIN_PASSWORDS = {name: learner.password for name, learner in LEARNERS.items()}
 
 def _convert_vocab_tuples_to_dict(items: List[Tuple[VocabularyTerm, VocabularyScore]]) -> List[Dict[str, Any]]:
     """Convert list of (VocabularyTerm, VocabularyScore) tuples to dictionary format"""
@@ -63,12 +59,14 @@ def fetch_and_store_vocab_data() -> int:
     return len(vocab_db.data)
 
 def is_authenticated() -> bool:
-    """Check if user is authenticated"""
-    return session.get('authenticated', False)
+    """Check if user is authenticated for a configured learner"""
+    # A session without a (still) configured learner has nowhere to read from
+    # or write to, so it counts as logged out rather than falling back to anyone.
+    return session.get('authenticated', False) and session.get('user') in USERS
 
 def current_user() -> str:
-    """Name of the learner whose sheet this session works on"""
-    return session.get('user', DEFAULT_USER)
+    """Name of the learner whose sheet this session works on (guarded by @require_auth)"""
+    return session['user']
 
 def require_auth(f):
     """Decorator to require authentication"""
@@ -83,9 +81,9 @@ def require_auth(f):
 def login():
     users = list(USERS)
     if request.method == 'POST':
-        user = request.form.get('user', DEFAULT_USER)
+        user = request.form.get('user')
         if user not in USERS:
-            return render_template('login.html', users=users, selected_user=DEFAULT_USER,
+            return render_template('login.html', users=users, selected_user=users[0],
                                  error='Unknown user. Please try again.', delay=0)
 
         # Check if this is a guest login
@@ -109,7 +107,8 @@ def login():
                                  error=f'Too many failed attempts. Please wait {remaining_delay} seconds.',
                                  delay=remaining_delay)
 
-        if password == LOGIN_PASSWORDS[user]:
+        expected_password = LOGIN_PASSWORDS[user]
+        if expected_password and password == expected_password:
             session['authenticated'] = True
             session['guest_mode'] = False
             session['user'] = user
@@ -125,7 +124,7 @@ def login():
 
     # /login?user=<Name> preselects a learner so the page can be bookmarked per child
     requested_user = request.args.get('user')
-    selected_user = requested_user if requested_user in USERS else DEFAULT_USER
+    selected_user = requested_user if requested_user in USERS else users[0]
     return render_template('login.html', users=users, selected_user=selected_user, error=None, delay=0)
 
 @app.route('/logout')
