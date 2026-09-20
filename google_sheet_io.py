@@ -5,6 +5,7 @@ import glob
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from level import LevelSystem, Urgency, NOT_EXPIRED_LOW_URGENCY
+from config import LEARNERS
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 from collections import OrderedDict
@@ -34,15 +35,14 @@ class UserSheet:
                 f'/export?format=csv&gid={VOCAB_GID[language]}')
 
     def scores_sheet_name(self, language: str) -> str:
-        """Title of the score tab for a language, e.g. 'Scores Latein (Jakob)'."""
+        """Title of the score tab for a language, e.g. 'Scores Latein (Anna)'."""
         return f'Scores {language} ({self.name})'
 
 
-USERS: Dict[str, UserSheet] = OrderedDict([
-    ('Jakob', UserSheet('Jakob', '1jTv5qPBcGCTcGFqnj9mnQvEwfjsf4YtQnA5GTJbU-Ig')),
-    ('Leo', UserSheet('Leo', '1CVRjFL0S3z4vqfLtpkiUdV-1etmJ9gZ2VN2YqYPgwVs')),
-])
-DEFAULT_USER = 'Jakob'
+# Learners come from configuration.ini (or VOCAB_APP_CONFIG), see config.py
+USERS: Dict[str, UserSheet] = OrderedDict(
+    (name, UserSheet(name, learner.spreadsheet_id)) for name, learner in LEARNERS.items()
+)
 
 
 def get_user_sheet(user_name: str) -> UserSheet:
@@ -209,7 +209,7 @@ def _fetch_data_from_google_sheet(csv_url: str, sheet_name: str) -> List[dict]:
         return filled_data
     return []
 
-def fetch_data(user_name: str = DEFAULT_USER) -> VocabularyDatabase:
+def fetch_data(user_name: str) -> VocabularyDatabase:
     """
     Fetches the vocabulary data from the user's Google Sheet and returns it as a VocabularyDatabase.
 
@@ -270,7 +270,7 @@ def fetch_data(user_name: str = DEFAULT_USER) -> VocabularyDatabase:
     
     return vocab_db
 
-def write_scores_to_sheet(vocab_items, language='Englisch', user_name: str = DEFAULT_USER):
+def write_scores_to_sheet(vocab_items, language: str, user_name: str):
     """
     Write vocabulary scores to the appropriate tab of the user's Google Sheet.
 
@@ -401,7 +401,9 @@ def _fetch_scores(user_sheet: UserSheet):
         print(f"Error fetching scores: {e}")
         return {}  # Return empty dict on error
 
-# Keep the existing debug print for backwards compatibility
 if __name__ == "__main__":
-    vocab_data = fetch_data()
+    import sys
+    if len(sys.argv) != 2:
+        sys.exit(f"Usage: python google_sheet_io.py <learner>  (one of: {', '.join(USERS)})")
+    vocab_data = fetch_data(sys.argv[1])
     print(f'Read {len(vocab_data.data)} rows of data from the Google Sheet.')

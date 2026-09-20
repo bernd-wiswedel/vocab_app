@@ -10,7 +10,7 @@ from google_sheet_io import (
     COL_NAME_TERM, COL_NAME_TRANSLATION, COL_NAME_LANGUAGE,
     COL_NAME_CATEGORY, COL_NAME_COMMENT,
     _fetch_data_from_google_sheet, fetch_data, write_scores_to_sheet,
-    USERS, DEFAULT_USER, UserSheet, get_user_sheet
+    USERS, UserSheet, get_user_sheet
 )
 from level import LevelSystem, RED_1_LOW_URGENCY
 
@@ -396,7 +396,7 @@ class TestWriteScoresToSheet:
         mock_service.spreadsheets().values().batchUpdate().execute.return_value = {}
         
         vocab_items = [{'Fremdsprache': 'domus', 'score_status': 'Red-2'}]
-        rows_written = write_scores_to_sheet(vocab_items, 'Englisch')
+        rows_written = write_scores_to_sheet(vocab_items, 'Englisch', 'Alice')
         
         assert rows_written == 1
         assert mock_service.spreadsheets().values().batchUpdate.called
@@ -404,7 +404,7 @@ class TestWriteScoresToSheet:
     def test_write_scores_invalid_language(self):
         """Test that invalid language raises error."""
         with pytest.raises(ValueError, match="Unsupported language"):
-            write_scores_to_sheet([], 'Spanish')
+            write_scores_to_sheet([], 'Spanish', 'Alice')
 
     @patch('google_sheet_io._get_sheets_service')
     def test_write_scores_targets_users_sheet(self, mock_get_service):
@@ -414,15 +414,15 @@ class TestWriteScoresToSheet:
         mock_service.spreadsheets().values().get().execute.return_value = {'values': [['Fremdsprache', 'Status', 'Date']]}
         mock_service.spreadsheets().values().batchUpdate().execute.return_value = {}
 
-        write_scores_to_sheet([{'Fremdsprache': 'domus', 'score_status': 'Red-2'}], 'Latein', user_name='Leo')
+        write_scores_to_sheet([{'Fremdsprache': 'domus', 'score_status': 'Red-2'}], 'Latein', user_name='Bob')
 
-        leo = USERS['Leo']
+        bob = USERS['Bob']
         read_kwargs = mock_service.spreadsheets().values().get.call_args.kwargs
-        assert read_kwargs['spreadsheetId'] == leo.spreadsheet_id
-        assert read_kwargs['range'].startswith("'Scores Latein (Leo)'")
+        assert read_kwargs['spreadsheetId'] == bob.spreadsheet_id
+        assert read_kwargs['range'].startswith("'Scores Latein (Bob)'")
         write_kwargs = mock_service.spreadsheets().values().batchUpdate.call_args.kwargs
-        assert write_kwargs['spreadsheetId'] == leo.spreadsheet_id
-        assert write_kwargs['body']['data'][0]['range'].startswith("'Scores Latein (Leo)'")
+        assert write_kwargs['spreadsheetId'] == bob.spreadsheet_id
+        assert write_kwargs['body']['data'][0]['range'].startswith("'Scores Latein (Bob)'")
 
     def test_write_scores_unknown_user(self):
         """Test that an unknown user raises error before touching the API."""
@@ -433,20 +433,22 @@ class TestWriteScoresToSheet:
 class TestUserSheets:
     """Test the per-user spreadsheet configuration."""
 
-    def test_default_user_is_configured(self):
-        assert DEFAULT_USER in USERS
-        assert set(USERS) == {'Jakob', 'Leo'}
+    def test_users_come_from_config(self):
+        """USERS mirrors the [user:<Name>] sections conftest put into VOCAB_APP_CONFIG."""
+        assert list(USERS) == ['Alice', 'Bob']
+        assert USERS['Alice'].spreadsheet_id == 'alice-sheet-id'
+        assert USERS['Bob'].spreadsheet_id == 'bob-sheet-id'
 
     def test_users_have_distinct_spreadsheets(self):
         ids = [sheet.spreadsheet_id for sheet in USERS.values()]
         assert len(set(ids)) == len(ids)
 
     def test_user_sheet_urls_and_tab_names(self):
-        sheet = UserSheet('Leo', 'SHEET-ID')
+        sheet = UserSheet('Bob', 'SHEET-ID')
         assert sheet.vocab_csv_url('Latein') == 'https://docs.google.com/spreadsheets/d/SHEET-ID/export?format=csv&gid=0'
         assert sheet.vocab_csv_url('Englisch') == 'https://docs.google.com/spreadsheets/d/SHEET-ID/export?format=csv&gid=897548588'
-        assert sheet.scores_sheet_name('Latein') == 'Scores Latein (Leo)'
-        assert sheet.scores_sheet_name('Englisch') == 'Scores Englisch (Leo)'
+        assert sheet.scores_sheet_name('Latein') == 'Scores Latein (Bob)'
+        assert sheet.scores_sheet_name('Englisch') == 'Scores Englisch (Bob)'
 
     def test_get_user_sheet_unknown(self):
         with pytest.raises(ValueError, match="Unknown user"):
@@ -456,9 +458,9 @@ class TestUserSheets:
     @patch('google_sheet_io._fetch_data_from_google_sheet', return_value=[])
     def test_fetch_data_reads_users_sheet(self, mock_fetch_csv, mock_fetch_scores):
         """Test that fetch_data reads the CSV exports and scores of the given user."""
-        fetch_data('Leo')
+        fetch_data('Bob')
 
-        leo = USERS['Leo']
+        bob = USERS['Bob']
         urls = [call.args[0] for call in mock_fetch_csv.call_args_list]
-        assert urls == [leo.vocab_csv_url('Latein'), leo.vocab_csv_url('Englisch')]
-        assert mock_fetch_scores.call_args.args[0] is leo
+        assert urls == [bob.vocab_csv_url('Latein'), bob.vocab_csv_url('Englisch')]
+        assert mock_fetch_scores.call_args.args[0] is bob

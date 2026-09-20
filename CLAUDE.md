@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "WortSpaß" — a small Flask app for practicing Latin and English vocabulary, with a
 spaced-repetition level system. Vocabulary and progress live in Google Sheets — one spreadsheet
-per learner (`USERS` in `google_sheet_io.py`), all copies of the same
-template; the app has no database of its own. The learner is picked on the login page and
-stored in `session['user']`. UI text, column names, and form values are German (`Richtig`/`Falsch`,
+per learner, all copies of the same template; the app has no database of its own. Learners
+(name, spreadsheet ID) are configured in the committed `configuration.ini`, never in code;
+passwords come from `LOGIN_PASSWORD_<NAME>` env vars (`config.py`). `VOCAB_APP_CONFIG` can
+replace the file with inline INI text — the tests use that. The learner is picked on the login
+page and stored in `session['user']`. UI text, column names, and form values are German (`Richtig`/`Falsch`,
 `Latein`/`Englisch`, `Fremdsprache`/`Deutsch`/`Zusatz`/`Kategorie`/`Sprache`).
 
 ## Commands
@@ -33,7 +35,8 @@ Dependency helpers (mirroring the weekly GitHub Actions jobs): `python check_dep
 
 ## Architecture
 
-Three modules, strictly layered: `level.py` (no I/O) ← `google_sheet_io.py` ← `app.py`.
+Three modules, strictly layered: `level.py` (no I/O) ← `google_sheet_io.py` ← `app.py`, plus
+`config.py` (learner registry `LEARNERS`, loaded once at import) which the latter two read.
 
 **`level.py`** — the spaced-repetition engine. `LevelSystem.LEVELS` is an ordered list
 Red-1 → Red-2 → Red-3 → Red-4 → Yellow-1 → Yellow-2 → Green, each with `min_days` (earliest retest)
@@ -46,8 +49,9 @@ next level; correct but too soon → same level, date refreshed.
 
 **`google_sheet_io.py`** — data layer plus the Google Sheets boundary. `UserSheet` holds one
 learner's spreadsheet ID and derives the CSV URLs and score-tab names (`Scores <Sprache> (<Name>)`);
-`fetch_data(user_name)` and `write_scores_to_sheet(items, language, user_name)` take the learner
-and default to `DEFAULT_USER`. Reads use two different mechanisms:
+`fetch_data(user_name)` and `write_scores_to_sheet(items, language, user_name)` require the
+learner — there is deliberately no default, because the worst failure of this app is silently
+touching the wrong child's sheet. Reads use two different mechanisms:
 - *Vocabulary* comes from public CSV export URLs (`.../export?format=csv&gid=...`, gid 0 = Latein,
   897548588 = Englisch — identical in every learner's copy), no auth. The first data row is skipped,
   blank `Fremdsprache` rows dropped, and a blank `Kategorie` inherits the previous row's value
@@ -66,8 +70,9 @@ string alone across both languages, so identical Latin and English terms share a
 `VocabularyDatabase` is pickled into the Flask filesystem session (10 h lifetime) at login and
 re-fetched on `/reload_data`. `get_vocab_data()` raises if it is missing. `current_user()` reads
 `session['user']`; every call into the sheet layer goes through it, and `/reload_data` must carry
-it across its `session.clear()`. Passwords are per learner (`LOGIN_PASSWORDS`, from
-`LOGIN_PASSWORD_<NAME>`); a login POST without a `user` field means `DEFAULT_USER`.
+it across its `session.clear()`. `is_authenticated()` also requires `session['user']` to be a
+configured learner, so a stale or user-less session is simply logged out. Passwords are per
+learner (`LOGIN_PASSWORDS`, `None` = guest-only); a login POST without a valid `user` is rejected.
 
 The session directory is `FLASK_SESSION_DIR`, defaulting to `<tempdir>/flask_session` where
 `tempdir` honors `TMPDIR` — that is what lets the app and the tests run inside a sandbox whose
@@ -118,6 +123,10 @@ considered for both modes.
 ## Deployment
 
 Koyeb/Heroku-style: `Procfile` runs `gunicorn --bind :$PORT app:app`, `runtime.txt` pins the Python
-version. Env vars: `FLASK_SECRET_KEY`, `LOGIN_PASSWORD_<NAME>` per learner (plain `LOGIN_PASSWORD`
-still works for `DEFAULT_USER`), `GOOGLE_SERVICE_ACCOUNT_JSON`, optional `FLASK_SESSION_DIR`. The
-service account must be shared on every learner's spreadsheet.
+version. Env vars: `FLASK_SECRET_KEY`, `LOGIN_PASSWORD_<NAME>` for every learner in
+`configuration.ini`, `GOOGLE_SERVICE_ACCOUNT_JSON`; optional `VOCAB_APP_CONFIG` and
+`FLASK_SESSION_DIR`. The service account must be shared on every learner's spreadsheet. Locally,
+`python app.py` alone gives guest-only logins — export the password vars for password logins.
+
+Tests never see the real learners: conftest sets `VOCAB_APP_CONFIG` to two made-up ones (Alice,
+Bob) before importing `app`.
