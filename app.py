@@ -3,9 +3,10 @@ import pandas as pd
 import random
 import json
 import os
+import tempfile
 from datetime import timedelta
 from typing import List, Dict, Any, Tuple
-from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore
+from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore, USERS, DEFAULT_USER
 from level import LevelSystem, RED_1_LOW_URGENCY, NOT_EXPIRED_LOW_URGENCY
 from flask import Flask
 from flask_session import Session
@@ -17,11 +18,18 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_FILE_THRESHOLD'] = 250
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=10)
-app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'
+# gettempdir() honors TMPDIR, so a sandbox with a read-only /tmp still gets a writable directory
+app.config['SESSION_FILE_DIR'] = os.environ.get('FLASK_SESSION_DIR', os.path.join(tempfile.gettempdir(), 'flask_session'))
 Session(app)
 
-# Password protection
-LOGIN_PASSWORD = os.environ.get('LOGIN_PASSWORD', 'password')
+# One password per learner, from LOGIN_PASSWORD_<NAME>. The unsuffixed
+# LOGIN_PASSWORD is kept as the fallback for the default user so existing
+# deployments keep working.
+LOGIN_PASSWORDS = {
+    name: os.environ.get(f'LOGIN_PASSWORD_{name.upper()}',
+                         os.environ.get('LOGIN_PASSWORD', 'password') if name == DEFAULT_USER else 'password')
+    for name in USERS
+}
 
 def _convert_vocab_tuples_to_dict(items: List[Tuple[VocabularyTerm, VocabularyScore]]) -> List[Dict[str, Any]]:
     """Convert list of (VocabularyTerm, VocabularyScore) tuples to dictionary format"""
@@ -49,7 +57,7 @@ def get_vocab_data() -> VocabularyDatabase:
 def fetch_and_store_vocab_data() -> int:
     """Fetch vocabulary data from Google Sheets and store in session"""
     print("Fetching vocabulary data from Google Sheets...")
-    vocab_db = fetch_data()  # This now returns VocabularyDatabase
+    vocab_db = fetch_data(current_user())
     session['vocab_data'] = vocab_db
     print(f"Loaded {len(vocab_db.data)} vocabulary entries.")
     return len(vocab_db.data)
@@ -57,6 +65,10 @@ def fetch_and_store_vocab_data() -> int:
 def is_authenticated() -> bool:
     """Check if user is authenticated"""
     return session.get('authenticated', False)
+
+def current_user() -> str:
+    """Name of the learner whose sheet this session works on"""
+    return session.get('user', DEFAULT_USER)
 
 def require_auth(f):
     """Decorator to require authentication"""
@@ -69,41 +81,52 @@ def require_auth(f):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    users = list(USERS)
     if request.method == 'POST':
+        user = request.form.get('user', DEFAULT_USER)
+        if user not in USERS:
+            return render_template('login.html', users=users, selected_user=DEFAULT_USER,
+                                 error='Unknown user. Please try again.', delay=0)
+
         # Check if this is a guest login
         if 'guest_login' in request.form:
             session['authenticated'] = True
             session['guest_mode'] = True
+            session['user'] = user
             session['failed_attempts'] = 0
             return redirect(url_for('loading_data', source='guest'))
-        
+
         # Regular password login
         password = request.form.get('password')
         failed_attempts = session.get('failed_attempts', 0)
         last_attempt_time = session.get('last_attempt_time', 0)
-        
+
         # Implement delay for failed attempts
         current_time = time.time()
         if failed_attempts > 0 and current_time - last_attempt_time < failed_attempts * 2:
             remaining_delay = int(failed_attempts * 2 - (current_time - last_attempt_time))
-            return render_template('login.html', 
+            return render_template('login.html', users=users, selected_user=user,
                                  error=f'Too many failed attempts. Please wait {remaining_delay} seconds.',
                                  delay=remaining_delay)
-        
-        if password == LOGIN_PASSWORD:
+
+        if password == LOGIN_PASSWORDS[user]:
             session['authenticated'] = True
             session['guest_mode'] = False
+            session['user'] = user
             session['failed_attempts'] = 0
             # Redirect to loading page to fetch vocabulary data
             return redirect(url_for('loading_data', source='login'))
         else:
             session['failed_attempts'] = failed_attempts + 1
             session['last_attempt_time'] = current_time
-            return render_template('login.html', 
+            return render_template('login.html', users=users, selected_user=user,
                                  error='Incorrect password. Please try again.',
                                  delay=0)
-    
-    return render_template('login.html', error=None, delay=0)
+
+    # /login?user=<Name> preselects a learner so the page can be bookmarked per child
+    requested_user = request.args.get('user')
+    selected_user = requested_user if requested_user in USERS else DEFAULT_USER
+    return render_template('login.html', users=users, selected_user=selected_user, error=None, delay=0)
 
 @app.route('/logout')
 def logout():
@@ -115,7 +138,7 @@ def logout():
 def index():
     languages = ['Latein', 'Englisch']
     guest_mode = session.get('guest_mode', False)
-    return render_template('index.html', languages=languages, guest_mode=guest_mode)
+    return render_template('index.html', languages=languages, guest_mode=guest_mode, user=current_user())
 
 @app.route('/get_categories')
 @require_auth
@@ -213,13 +236,15 @@ def reload_data():
     # Preserve authentication and failed attempts data
     authenticated = session.get('authenticated', False)
     guest_mode = session.get('guest_mode', False)
+    user = current_user()
     failed_attempts = session.get('failed_attempts', 0)
     last_attempt_time = session.get('last_attempt_time', 0)
-    
+
     session.clear()
-    
+
     session['authenticated'] = authenticated
     session['guest_mode'] = guest_mode
+    session['user'] = user
     session['failed_attempts'] = failed_attempts
     session['last_attempt_time'] = last_attempt_time
     
@@ -234,7 +259,7 @@ def reload_data():
 def loading_data():
     """Show loading page while vocabulary data is being fetched"""
     source = request.args.get('source', 'login')  # 'login' or 'reload'
-    return render_template('loading.html', source=source)
+    return render_template('loading.html', source=source, user=current_user())
 
 @app.route('/api/fetch_data', methods=['POST'])
 @require_auth
@@ -876,7 +901,7 @@ def write_scores():
         # Write scores for each language in a single batch
         total_rows_written = 0
         for language, items in items_by_language.items():
-            rows_written = write_scores_to_sheet(items, language)
+            rows_written = write_scores_to_sheet(items, language, current_user())
             total_rows_written += rows_written
         
         # Redirect back to index after successful write

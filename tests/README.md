@@ -1,4 +1,4 @@
-# Test Suite for Jakobs WortSpaß Vocabulary App
+# Test Suite for WortSpaß Vocabulary App
 
 ## Overview
 

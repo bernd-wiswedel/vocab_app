@@ -9,17 +9,6 @@ from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 from collections import OrderedDict
 
-SHEET_URL_BASE = 'https://docs.google.com/spreadsheets/d/1jTv5qPBcGCTcGFqnj9mnQvEwfjsf4YtQnA5GTJbU-Ig/export?format=csv&gid='
-SHEET_URL_LATEIN = SHEET_URL_BASE + '0'
-SHEET_URL_ENGLISH = SHEET_URL_BASE + '897548588'
-SPREADSHEET_ID = '1jTv5qPBcGCTcGFqnj9mnQvEwfjsf4YtQnA5GTJbU-Ig'
-
-# Score sheet GIDs for writing
-SCORES_GID_ENGLISH = '2016285208'
-SCORES_GID_LATEIN = '410708540'
-SCORES_SHEET_NAME_ENGLISH = 'Scores Englisch (Jakob)'
-SCORES_SHEET_NAME_LATEIN = 'Scores Latein (Jakob)'
-
 COL_NAME_TERM = 'Fremdsprache'
 COL_NAME_COMMENT = 'Zusatz'
 COL_NAME_TRANSLATION = 'Deutsch'
@@ -27,6 +16,41 @@ COL_NAME_CATEGORY = 'Kategorie'
 COL_NAME_LANGUAGE = 'Sprache'
 SHEET_NAME_LATEIN = 'Latein'
 SHEET_NAME_ENGLISH = 'Englisch'
+
+# Tab gids of the vocabulary sheets. Every user's spreadsheet is a copy of the
+# same template, so the gids are identical across users.
+VOCAB_GID = {SHEET_NAME_LATEIN: '0', SHEET_NAME_ENGLISH: '897548588'}
+
+
+class UserSheet:
+    """The Google Spreadsheet belonging to one learner."""
+    def __init__(self, name: str, spreadsheet_id: str):
+        self.name = name
+        self.spreadsheet_id = spreadsheet_id
+
+    def vocab_csv_url(self, language: str) -> str:
+        """Public CSV export URL of the vocabulary tab for a language."""
+        return (f'https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}'
+                f'/export?format=csv&gid={VOCAB_GID[language]}')
+
+    def scores_sheet_name(self, language: str) -> str:
+        """Title of the score tab for a language, e.g. 'Scores Latein (Jakob)'."""
+        return f'Scores {language} ({self.name})'
+
+
+USERS: Dict[str, UserSheet] = OrderedDict([
+    ('Jakob', UserSheet('Jakob', '1jTv5qPBcGCTcGFqnj9mnQvEwfjsf4YtQnA5GTJbU-Ig')),
+    ('Leo', UserSheet('Leo', '1CVRjFL0S3z4vqfLtpkiUdV-1etmJ9gZ2VN2YqYPgwVs')),
+])
+DEFAULT_USER = 'Jakob'
+
+
+def get_user_sheet(user_name: str) -> UserSheet:
+    """Look up a user's spreadsheet; raises ValueError for unknown names."""
+    try:
+        return USERS[user_name]
+    except KeyError:
+        raise ValueError(f"Unknown user: {user_name}")
 
 
 class VocabularyTerm:
@@ -185,26 +209,27 @@ def _fetch_data_from_google_sheet(csv_url: str, sheet_name: str) -> List[dict]:
         return filled_data
     return []
 
-def fetch_data() -> VocabularyDatabase:
+def fetch_data(user_name: str = DEFAULT_USER) -> VocabularyDatabase:
     """
-    Fetches the vocabulary data from the Google Sheet and returns it as a VocabularyDatabase.
-    
+    Fetches the vocabulary data from the user's Google Sheet and returns it as a VocabularyDatabase.
+
     The database maps VocabularyTerm objects to VocabularyScore objects directly.
-    For backward compatibility, you can call .to_dict_list() on the returned database.
-    
+
+    :param user_name: Key into USERS selecting whose spreadsheet to read
     :return: VocabularyDatabase instance containing all vocabulary with score information
     """
-    print("Fetching vocabulary data from sheets...")
-    latin_data = _fetch_data_from_google_sheet(SHEET_URL_LATEIN, SHEET_NAME_LATEIN)
-    english_data = _fetch_data_from_google_sheet(SHEET_URL_ENGLISH, SHEET_NAME_ENGLISH)
-    
+    user_sheet = get_user_sheet(user_name)
+    print(f"Fetching vocabulary data from {user_name}'s sheets...")
+    latin_data = _fetch_data_from_google_sheet(user_sheet.vocab_csv_url(SHEET_NAME_LATEIN), SHEET_NAME_LATEIN)
+    english_data = _fetch_data_from_google_sheet(user_sheet.vocab_csv_url(SHEET_NAME_ENGLISH), SHEET_NAME_ENGLISH)
+
     # Combine vocabulary data
     raw_vocab_data = latin_data + english_data
     print(f"Loaded {len(raw_vocab_data)} vocabulary entries")
-    
+
     # Fetch scores
     print("Fetching score data...")
-    scores = _fetch_scores()
+    scores = _fetch_scores(user_sheet)
     print(f"Loaded {len(scores)} score entries")
     
     # Create vocabulary database
@@ -245,30 +270,28 @@ def fetch_data() -> VocabularyDatabase:
     
     return vocab_db
 
-def write_scores_to_sheet(vocab_items, language='Englisch'):
+def write_scores_to_sheet(vocab_items, language='Englisch', user_name: str = DEFAULT_USER):
     """
-    Write vocabulary scores to the appropriate Google Sheet tab.
-    
+    Write vocabulary scores to the appropriate tab of the user's Google Sheet.
+
     :param vocab_items: List of vocabulary items (dictionaries with term keys and score_status)
     :param language: 'Englisch' or 'Latein' to determine which sheet tab to write to
+    :param user_name: Key into USERS selecting whose spreadsheet to write to
     """
     from datetime import date
-    
-    # Determine which sheet to write to
-    if language == 'Englisch':
-        sheet_name = SCORES_SHEET_NAME_ENGLISH
-    elif language == 'Latein':
-        sheet_name = SCORES_SHEET_NAME_LATEIN
-    else:
+
+    if language not in VOCAB_GID:
         raise ValueError(f"Unsupported language: {language}")
-    
+    user_sheet = get_user_sheet(user_name)
+    sheet_name = user_sheet.scores_sheet_name(language)
+
     # Get the sheets service
     service = _get_sheets_service()
-    
+
     try:
         # Read existing data to find current row positions
         result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=user_sheet.spreadsheet_id,
             range=f"'{sheet_name}'!A:C"
         ).execute()
         
@@ -318,7 +341,7 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
             }
             
             service.spreadsheets().values().batchUpdate(
-                spreadsheetId=SPREADSHEET_ID,
+                spreadsheetId=user_sheet.spreadsheet_id,
                 body=body
             ).execute()
             
@@ -330,28 +353,23 @@ def write_scores_to_sheet(vocab_items, language='Englisch'):
         print(f"Error writing to Google Sheets: {e}")
         raise
 
-def _fetch_scores():
+def _fetch_scores(user_sheet: UserSheet):
     """
-    Fetch vocabulary scores from both English and Latin score sheets.
+    Fetch vocabulary scores from both English and Latin score tabs of a user's sheet.
     Returns a dictionary mapping vocabulary terms to their score data.
-    
+
     :return: Dictionary with structure {term: {'status': 'red', 'date': 'YYYY-MM-DD'}}
     """
     service = _get_sheets_service()
     scores = {}
-    
-    # Define sheets to fetch from
-    score_sheets = [
-        (SCORES_SHEET_NAME_ENGLISH, 'Englisch'),
-        (SCORES_SHEET_NAME_LATEIN, 'Latein')
-    ]
-    
+
     try:
-        for sheet_name, language in score_sheets:
+        for language in (SHEET_NAME_ENGLISH, SHEET_NAME_LATEIN):
+            sheet_name = user_sheet.scores_sheet_name(language)
             try:
                 # Fetch score data from the sheet
                 result = service.spreadsheets().values().get(
-                    spreadsheetId=SPREADSHEET_ID,
+                    spreadsheetId=user_sheet.spreadsheet_id,
                     range=f"'{sheet_name}'!A:C"
                 ).execute()
                 

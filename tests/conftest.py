@@ -7,6 +7,11 @@ from datetime import date, timedelta
 from collections import OrderedDict
 from flask import session
 
+# Flask-Session binds its directory when app.py is imported, so the test
+# session directory has to be chosen here, before that import.
+_TEST_SESSION_DIR = tempfile.mkdtemp(prefix='vocab_app_test_session_')
+os.environ['FLASK_SESSION_DIR'] = _TEST_SESSION_DIR
+
 from app import app as flask_app
 from google_sheet_io import VocabularyTerm, VocabularyScore, VocabularyDatabase
 from level import LevelSystem, Urgency
@@ -15,32 +20,28 @@ from level import LevelSystem, Urgency
 @pytest.fixture
 def app():
     """Create and configure a test Flask application."""
-    # Create a temporary directory for session files
-    test_session_dir = tempfile.mkdtemp()
-    
     # Set environment variable for LOGIN_PASSWORD
     original_password = os.environ.get('LOGIN_PASSWORD')
     os.environ['LOGIN_PASSWORD'] = 'test_password'
-    
+
     flask_app.config.update({
         'TESTING': True,
         'SECRET_KEY': 'test_secret_key',
-        'SESSION_TYPE': 'filesystem',
-        'SESSION_FILE_DIR': test_session_dir,
         'WTF_CSRF_ENABLED': False
     })
-    
+
     yield flask_app
-    
+
     # Restore original password
     if original_password is not None:
         os.environ['LOGIN_PASSWORD'] = original_password
     elif 'LOGIN_PASSWORD' in os.environ:
         del os.environ['LOGIN_PASSWORD']
-    
-    # Cleanup
+
+
+def pytest_sessionfinish(session, exitstatus):
     import shutil
-    shutil.rmtree(test_session_dir, ignore_errors=True)
+    shutil.rmtree(_TEST_SESSION_DIR, ignore_errors=True)
 
 
 @pytest.fixture

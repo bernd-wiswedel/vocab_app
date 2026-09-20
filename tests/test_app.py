@@ -24,20 +24,63 @@ class TestAuthentication:
         assert b'login' in response.data.lower()
     
     def test_login_correct_password(self, client, monkeypatch):
-        """Test successful login with correct password."""
-        # Monkeypatch the LOGIN_PASSWORD in the app module
+        """Test successful login with correct password (defaults to Jakob)."""
         import app as app_module
-        monkeypatch.setattr(app_module, 'LOGIN_PASSWORD', 'test_password')
-        
+        monkeypatch.setitem(app_module.LOGIN_PASSWORDS, 'Jakob', 'test_password')
+
         response = client.post('/login', data={'password': 'test_password'}, follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/loading_data?source=login' in response.location
-    
+        with client.session_transaction() as sess:
+            assert sess['user'] == 'Jakob'
+
+    def test_login_page_offers_user_choice(self, client):
+        """Test that the login page lists every configured user."""
+        response = client.get('/login')
+        assert b'<option value="Jakob"' in response.data
+        assert b'<option value="Leo"' in response.data
+
+    def test_login_page_preselects_user_from_query(self, client):
+        """Test that /login?user=<Name> preselects that learner (bookmarkable)."""
+        response = client.get('/login?user=Leo')
+        assert b'<option value="Leo" selected>' in response.data
+        assert b'<option value="Jakob" selected>' not in response.data
+
+    def test_login_page_ignores_unknown_query_user(self, client):
+        """Test that an unknown ?user falls back to the default learner."""
+        response = client.get('/login?user=Mallory')
+        assert b'<option value="Jakob" selected>' in response.data
+
+    def test_login_as_second_user(self, client, monkeypatch):
+        """Test that each user has their own password and lands in their own session."""
+        import app as app_module
+        monkeypatch.setitem(app_module.LOGIN_PASSWORDS, 'Jakob', 'jakob_pw')
+        monkeypatch.setitem(app_module.LOGIN_PASSWORDS, 'Leo', 'leo_pw')
+
+        # Jakob's password does not open Leo's account
+        response = client.post('/login', data={'user': 'Leo', 'password': 'jakob_pw'})
+        assert response.status_code == 200
+        assert b'Incorrect password' in response.data
+
+        with client.session_transaction() as sess:
+            sess['failed_attempts'] = 0
+        response = client.post('/login', data={'user': 'Leo', 'password': 'leo_pw'}, follow_redirects=False)
+        assert response.status_code == 302
+        with client.session_transaction() as sess:
+            assert sess['user'] == 'Leo'
+            assert sess['guest_mode'] is False
+
+    def test_login_unknown_user(self, client):
+        """Test that an unknown user name is rejected."""
+        response = client.post('/login', data={'user': 'Mallory', 'password': 'password'})
+        assert response.status_code == 200
+        assert b'Unknown user' in response.data
+
     def test_login_incorrect_password(self, client):
         """Test login with incorrect password."""
         response = client.post('/login', data={'password': 'wrong_password'})
-        
+
         assert response.status_code == 200
         assert b'Incorrect password' in response.data
     
@@ -54,9 +97,18 @@ class TestAuthentication:
         """Test guest login functionality."""
         with patch('app.fetch_and_store_vocab_data', return_value=10):
             response = client.post('/login', data={'guest_login': 'true'}, follow_redirects=False)
-            
+
             assert response.status_code == 302
             assert '/loading_data?source=guest' in response.location
+
+    def test_guest_login_for_second_user(self, client):
+        """Test that a guest can browse Leo's vocabulary without a password."""
+        response = client.post('/login', data={'user': 'Leo', 'guest_login': 'true'}, follow_redirects=False)
+
+        assert response.status_code == 302
+        with client.session_transaction() as sess:
+            assert sess['user'] == 'Leo'
+            assert sess['guest_mode'] is True
     
     def test_logout_clears_session(self, authenticated_client):
         """Test that logout clears session data."""
@@ -104,7 +156,19 @@ class TestDataLoading:
         data = json.loads(response.data)
         assert data['success'] is True
         assert data['entry_count'] == 1
-    
+        mock_fetch.assert_called_once_with('Jakob')
+
+    @patch('app.fetch_data')
+    def test_api_fetch_data_for_session_user(self, mock_fetch, authenticated_client):
+        """Test that data is fetched from the logged-in user's sheet."""
+        mock_fetch.return_value = VocabularyDatabase()
+        with authenticated_client.session_transaction() as sess:
+            sess['user'] = 'Leo'
+
+        authenticated_client.post('/api/fetch_data')
+
+        mock_fetch.assert_called_once_with('Leo')
+
     @patch('app.fetch_data')
     def test_api_fetch_data_failure(self, mock_fetch, authenticated_client):
         """Test data fetching with error."""
@@ -117,6 +181,17 @@ class TestDataLoading:
         assert data['success'] is False
         assert 'API Error' in data['message']
     
+    def test_reload_data_preserves_user(self, authenticated_client):
+        """Test that reloading keeps the session bound to the same learner."""
+        with authenticated_client.session_transaction() as sess:
+            sess['user'] = 'Leo'
+
+        authenticated_client.post('/reload_data', follow_redirects=False)
+
+        with authenticated_client.session_transaction() as sess:
+            assert sess['user'] == 'Leo'
+            assert sess['authenticated'] is True
+
     def test_reload_data_preserves_auth(self, authenticated_client, sample_vocab_database):
         """Test that reload_data preserves authentication state."""
         with authenticated_client.session_transaction() as sess:
@@ -587,10 +662,24 @@ class TestWriteScores:
         response = authenticated_client.post('/write_scores', data={
             'action': 'save'
         }, follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert mock_write.called
-    
+
+    @patch('app.write_scores_to_sheet')
+    def test_write_scores_uses_session_user(self, mock_write, authenticated_client, sample_test_data):
+        """Test that scores are written to the sheet of the logged-in user."""
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+            sess['user'] = 'Leo'
+
+        authenticated_client.post('/write_scores', data={'action': 'save'}, follow_redirects=False)
+
+        assert mock_write.call_args.args[2] == 'Leo'
+
     def test_write_scores_guest_mode_redirects(self, guest_client, sample_test_data):
         """Test that guest mode cannot write scores."""
         with guest_client.session_transaction() as sess:
