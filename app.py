@@ -77,6 +77,41 @@ def require_auth(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
+# Shared by every learner's manifest; the sizes match the files in static/.
+_MANIFEST_ICONS = [
+    {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+]
+
+@app.route('/manifest.webmanifest')
+def manifest():
+    """Web app manifest, tailored to one learner when ?user=<Name> asks for it.
+
+    Chrome on Android takes the URL of a home-screen shortcut from start_url,
+    not from the page the shortcut was added on, so a bookmarked
+    /login?user=<Name> would lose its query and fall back to the first learner.
+    A manifest per learner gives every child their own shortcut and name.
+    """
+    user = request.args.get('user')
+    if user not in USERS:
+        user = None
+    start_url = url_for('login', user=user)
+    body = {
+        "id": start_url,  # distinct id and start_url: one home-screen icon per learner
+        "name": f"WortSpaß – {user}" if user else "WortSpaß",
+        "short_name": user or "WortSpaß",
+        "description": "Latein- und Englisch-Vokabeln üben",
+        "start_url": start_url,
+        "scope": "/",
+        "display": "browser",
+        "background_color": "#007bff",
+        "theme_color": "#007bff",
+        "icons": _MANIFEST_ICONS,
+    }
+    # json.dumps escapes the umlauts, so the bytes are plain ASCII whatever the
+    # charset a client assumes for application/manifest+json.
+    return app.response_class(json.dumps(body), mimetype='application/manifest+json')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     users = list(USERS)
@@ -122,10 +157,14 @@ def login():
                                  error='Incorrect password. Please try again.',
                                  delay=0)
 
-    # /login?user=<Name> preselects a learner so the page can be bookmarked per child
+    # /login?user=<Name> preselects a learner so the page can be bookmarked per child.
+    # Only an explicitly requested, known name reaches the manifest link, so that a
+    # plain visit to /login does not offer a home-screen shortcut for users[0].
     requested_user = request.args.get('user')
-    selected_user = requested_user if requested_user in USERS else users[0]
-    return render_template('login.html', users=users, selected_user=selected_user, error=None, delay=0)
+    requested_user = requested_user if requested_user in USERS else None
+    selected_user = requested_user or users[0]
+    return render_template('login.html', users=users, selected_user=selected_user,
+                           manifest_user=requested_user, error=None, delay=0)
 
 @app.route('/logout')
 def logout():

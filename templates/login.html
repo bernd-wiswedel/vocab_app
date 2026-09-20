@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+    {# The manifest carries ?user= into start_url, so "add to home screen" keeps the learner #}
+    <link rel="manifest" href="{{ url_for('manifest', user=manifest_user|default(none)) }}">
     <meta name="theme-color" content="#007bff">
     <style>
         .login-container {

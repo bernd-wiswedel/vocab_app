@@ -82,9 +82,37 @@ class TestAuthentication:
         assert 'rel="manifest"' in html
         for path in ('/static/apple-touch-icon.png', '/static/icon-192.png', '/static/icon-512.png'):
             assert client.get(path).status_code == 200, path
-        manifest = json.loads(client.get('/static/manifest.webmanifest').data)
+        manifest = json.loads(client.get('/manifest.webmanifest').data)
         assert manifest['start_url'] == '/login'
         assert {icon['sizes'] for icon in manifest['icons']} == {'192x192', '512x512'}
+
+    def test_manifest_start_url_carries_the_learner(self, client):
+        """Test that ?user= reaches start_url, which is where Chrome takes the shortcut URL from."""
+        response = client.get('/manifest.webmanifest?user=Bob')
+        assert response.mimetype == 'application/manifest+json'
+        manifest = json.loads(response.data)
+        assert manifest['start_url'] == '/login?user=Bob'
+        # A distinct id keeps the two learners as two separate home-screen entries
+        assert manifest['id'] == '/login?user=Bob'
+        assert 'Bob' in manifest['name']
+        assert manifest['short_name'] == 'Bob'
+
+    def test_manifest_ignores_unknown_user(self, client):
+        """Test that an unknown ?user falls back to the generic manifest, not to users[0]."""
+        manifest = json.loads(client.get('/manifest.webmanifest?user=Mallory').data)
+        assert manifest['start_url'] == '/login'
+        assert 'Mallory' not in json.dumps(manifest)
+
+    def test_login_page_links_its_learners_manifest(self, client):
+        """Test that /login?user=<Name> links the manifest for that same learner."""
+        html = client.get('/login?user=Bob').data.decode()
+        assert '/manifest.webmanifest?user=Bob' in html
+
+    def test_bare_login_page_links_the_generic_manifest(self, client):
+        """Test that a plain /login does not offer a shortcut for the first learner."""
+        html = client.get('/login').data.decode()
+        assert '/manifest.webmanifest"' in html
+        assert 'user=Alice' not in html
 
     def test_login_page_exposes_username_to_password_managers(self, client):
         """Test the hidden username mirror that lets browsers save one password per learner."""
