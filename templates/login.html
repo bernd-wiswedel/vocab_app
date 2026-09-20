@@ -133,12 +133,27 @@
                     <option value="{{ name }}" {% if name == selected_user %}selected{% endif %}>{{ name }}</option>
                 {% endfor %}
             </select>
+            {# Password managers only pair a password with a text-like username
+               field, never with a <select>. This mirror of the dropdown is what
+               they see, so each learner gets their own saved credential. It is
+               kept off-screen rather than display:none so browsers still fill it. #}
+            <input
+                type="text"
+                id="username"
+                name="username"
+                value="{{ selected_user }}"
+                autocomplete="username"
+                tabindex="-1"
+                aria-hidden="true"
+                style="position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0;"
+            >
             <label for="password">Passwort:</label>
             <input
                 type="password"
                 id="password"
                 name="password"
                 class="login-input"
+                autocomplete="current-password"
                 required
                 {% if delay > 0 %}disabled{% endif %}
             >
@@ -188,8 +203,32 @@
     {% endif %}
 
     <script>
+        // Keep the dropdown and the hidden username field in sync in both
+        // directions: the user picks a learner, or the password manager fills
+        // a saved username (together with its password) and the dropdown follows.
+        const userSelect = document.getElementById('user');
+        const usernameInput = document.getElementById('username');
+        userSelect.addEventListener('change', function() {
+            usernameInput.value = userSelect.value;
+        });
+        const syncSelectFromUsername = () => {
+            const filled = usernameInput.value;
+            if (filled && filled !== userSelect.value &&
+                Array.from(userSelect.options).some(option => option.value === filled)) {
+                userSelect.value = filled;
+            }
+        };
+        usernameInput.addEventListener('input', syncSelectFromUsername);
+        usernameInput.addEventListener('change', syncSelectFromUsername);
+        // Autofill can happen without firing events; make the select follow just before submit
+        document.getElementById('loginForm').addEventListener('submit', function() {
+            syncSelectFromUsername();
+            usernameInput.value = userSelect.value;
+        });
+
         // Auto-focus password field if not disabled
         window.addEventListener('load', function() {
+            syncSelectFromUsername();
             const passwordInput = document.getElementById('password');
             if (!passwordInput.disabled) {
                 passwordInput.focus();
