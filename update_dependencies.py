@@ -56,7 +56,7 @@ def get_outdated_packages() -> List[Dict]:
     if success:
         try:
             outdated_packages = json.loads(output)
-            # With Python 3.12+ requirement, all packages are compatible
+            # With Python 3.13+ requirement, all packages are compatible
             return outdated_packages
         except json.JSONDecodeError:
             return []
@@ -125,8 +125,8 @@ def main():
     print("=" * 40)
     
     # Check Python version requirement
-    if sys.version_info < (3, 12):
-        print(f"❌ This project requires Python 3.12+, but you're using {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    if sys.version_info < (3, 13):
+        print(f"❌ This project requires Python 3.13+, but you're using {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
         print("Please upgrade Python before updating dependencies.")
         print("See PYTHON_VERSION_POLICY.md for upgrade instructions.")
         return 1
