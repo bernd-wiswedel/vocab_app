@@ -120,6 +120,10 @@ writes it and then copies it into `test_data` and the `VocabularyDatabase` and f
 `saved`, so a second save writes nothing and a later projection starts from what the sheet now
 says. `/finish_test` clears `saved` when a term is answered again.
 
+A wrong answer is sticky: `/finish_test` will not overwrite a `wrong` result with a `correct` one,
+so getting a term right on the retest round does not undo the miss. Saving lifts that — the sheet
+records the miss, and from there the term can be earned back.
+
 ### Guest mode
 
 `session['guest_mode']` is the second axis through almost every route: guests get *all* terms

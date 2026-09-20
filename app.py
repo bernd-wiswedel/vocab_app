@@ -688,8 +688,14 @@ def finish_test():
 
     for position, result in graded:
         item = test_data[order[position]]
-        item['test_result'] = result
-        item.pop('saved', None)  # a new answer, not yet written to the sheet
+        # Saving settles a term: the sheet already records how it went, so the
+        # next answer is judged on its own again.
+        settled = item.pop('saved', None)
+        # Until then a wrong answer stands for the rest of the test. Getting the
+        # term right on a retest a minute later says nothing about whether it
+        # will still be there next week.
+        if settled or item.get('test_result') != 'wrong':
+            item['test_result'] = result
     session.modified = True
     _end_round()
     return redirect(url_for('review'))
