@@ -6,6 +6,16 @@ body {
     background-color: #f4f4f4;
 }
 
+/* Inline SVG icons (see templates/_icons.html).
+   1em square and painted in currentColor, so the font-size/color rules that
+   styled the old Font Awesome <i> glyphs apply unchanged. */
+.icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    flex-shrink: 0;
+}
+
 /* Range Selection Toolbar */
 .range-selection-toolbar {
     display: flex;

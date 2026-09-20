@@ -1,3 +1,4 @@
+{% from '_icons.html' import icon, icon_sprite -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,9 +10,9 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="manifest" href="{{ url_for('manifest', user=session.get('user')) }}">
     <meta name="theme-color" content="#007bff">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
+    {{ icon_sprite() }}
     <div class="header">
         <div>
             <h1>Test</h1>
@@ -76,11 +77,11 @@
                     <button type="submit">Übersetzung</button>
                 </form>
                 <form action="{{ url_for('skip_question') }}" method="post" style="display: inline;">
-                    <button type="submit"><i class="fas fa-forward"></i> Skip</button>
+                    <button type="submit">{{ icon('forward') }} Skip</button>
                 </form>
                 <form action="{{ url_for('switch_direction') }}" method="post" style="display: inline;">
                     <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
-                    <button type="submit"><i class="fas fa-exchange-alt"></i> Switch</button>
+                    <button type="submit">{{ icon('exchange') }} Switch</button>
                 </form>
                 <form action="{{ url_for('review') }}" method="get" style="display: inline;">
                     <button type="submit">Auswertung</button>
@@ -88,5 +89,6 @@
             {% endif %}
         </div>
     </div>
+
 </body>
 </html>
