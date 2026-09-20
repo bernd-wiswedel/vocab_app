@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-"Jakobs WortSpaß" — a small Flask app for practicing Latin and English vocabulary, with a
-spaced-repetition level system. Vocabulary and progress both live in one Google Sheet; the app has
-no database of its own. UI text, column names, and form values are German (`Richtig`/`Falsch`,
+"WortSpaß" — a small Flask app for practicing Latin and English vocabulary, with a
+spaced-repetition level system. Vocabulary and progress live in Google Sheets — one spreadsheet
+per learner (`USERS` in `google_sheet_io.py`), all copies of the same
+template; the app has no database of its own. The learner is picked on the login page and
+stored in `session['user']`. UI text, column names, and form values are German (`Richtig`/`Falsch`,
 `Latein`/`Englisch`, `Fremdsprache`/`Deutsch`/`Zusatz`/`Kategorie`/`Sprache`).
 
 ## Commands
@@ -42,12 +44,14 @@ urgent first, by `days_until_expiry` then by higher level. Two sentinels encode 
 place level transitions happen: wrong → Red-1; expired → Red-1; correct and past `min_days` →
 next level; correct but too soon → same level, date refreshed.
 
-**`google_sheet_io.py`** — data layer plus the Google Sheets boundary. Reads use two different
-mechanisms:
+**`google_sheet_io.py`** — data layer plus the Google Sheets boundary. `UserSheet` holds one
+learner's spreadsheet ID and derives the CSV URLs and score-tab names (`Scores <Sprache> (<Name>)`);
+`fetch_data(user_name)` and `write_scores_to_sheet(items, language, user_name)` take the learner
+and default to `DEFAULT_USER`. Reads use two different mechanisms:
 - *Vocabulary* comes from public CSV export URLs (`.../export?format=csv&gid=...`, gid 0 = Latein,
-  897548588 = Englisch), no auth. The first data row is skipped, blank `Fremdsprache` rows dropped,
-  and a blank `Kategorie` inherits the previous row's value (categories are only written once per
-  lesson block in the sheet).
+  897548588 = Englisch — identical in every learner's copy), no auth. The first data row is skipped,
+  blank `Fremdsprache` rows dropped, and a blank `Kategorie` inherits the previous row's value
+  (categories are only written once per lesson block in the sheet).
 - *Scores* use the authenticated Sheets API v4 against two score tabs, and writing scores
   (`write_scores_to_sheet`) is the app's only mutation: it reads columns A:C, maps term → row, and
   sends one `values.batchUpdate` per language, updating existing rows or appending new ones.
@@ -59,8 +63,16 @@ fields, so any lookup must reconstruct the term exactly; and the score map is ke
 string alone across both languages, so identical Latin and English terms share a score row.
 
 **`app.py`** — routes, session state, and rendering. There is no persistence layer: the whole
-`VocabularyDatabase` is pickled into the Flask filesystem session (`/tmp/flask_session`, 10 h
-lifetime) at login and re-fetched on `/reload_data`. `get_vocab_data()` raises if it is missing.
+`VocabularyDatabase` is pickled into the Flask filesystem session (10 h lifetime) at login and
+re-fetched on `/reload_data`. `get_vocab_data()` raises if it is missing. `current_user()` reads
+`session['user']`; every call into the sheet layer goes through it, and `/reload_data` must carry
+it across its `session.clear()`. Passwords are per learner (`LOGIN_PASSWORDS`, from
+`LOGIN_PASSWORD_<NAME>`); a login POST without a `user` field means `DEFAULT_USER`.
+
+The session directory is `FLASK_SESSION_DIR`, defaulting to `<tempdir>/flask_session` where
+`tempdir` honors `TMPDIR` — that is what lets the app and the tests run inside a sandbox whose
+`/tmp` is read-only. `Session(app)` binds the directory at import time, so it can only be changed
+through the env var *before* `app` is imported (conftest does this), not via `app.config`.
 
 Credentials resolve in this order: `GOOGLE_SERVICE_ACCOUNT_JSON` env var (production) →
 `keys/vocab-app-*.json` (local, gitignored).
@@ -106,4 +118,6 @@ considered for both modes.
 ## Deployment
 
 Koyeb/Heroku-style: `Procfile` runs `gunicorn --bind :$PORT app:app`, `runtime.txt` pins the Python
-version. Env vars: `FLASK_SECRET_KEY`, `LOGIN_PASSWORD`, `GOOGLE_SERVICE_ACCOUNT_JSON`.
+version. Env vars: `FLASK_SECRET_KEY`, `LOGIN_PASSWORD_<NAME>` per learner (plain `LOGIN_PASSWORD`
+still works for `DEFAULT_USER`), `GOOGLE_SERVICE_ACCOUNT_JSON`, optional `FLASK_SESSION_DIR`. The
+service account must be shared on every learner's spreadsheet.

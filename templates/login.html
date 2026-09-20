@@ -124,33 +124,38 @@
             </div>
         {% endif %}
         
+        {# One form for both ways in: the guest button carries name="guest_login",
+           so the server sees that field only when it was the button clicked. #}
         <form method="POST" class="login-form" id="loginForm">
+            <label for="user">Wer bist du?</label>
+            <select id="user" name="user" class="login-input">
+                {% for name in users %}
+                    <option value="{{ name }}" {% if name == selected_user %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
             <label for="password">Passwort:</label>
-            <input 
-                type="password" 
-                id="password" 
-                name="password" 
-                class="login-input" 
+            <input
+                type="password"
+                id="password"
+                name="password"
+                class="login-input"
                 required
                 {% if delay > 0 %}disabled{% endif %}
             >
-            <button 
-                type="submit" 
-                class="login-button" 
+            <button
+                type="submit"
+                class="login-button"
                 id="submitButton"
                 {% if delay > 0 %}disabled{% endif %}
             >
                 Anmelden
             </button>
-        </form>
-        
-        <div class="divider">
-            <span>oder</span>
-        </div>
-        
-        <form method="POST" class="login-form">
-            <input type="hidden" name="guest_login" value="true">
-            <button type="submit" class="guest-button">
+
+            <div class="divider">
+                <span>oder</span>
+            </div>
+
+            <button type="submit" class="guest-button" name="guest_login" value="true" formnovalidate>
                 🎭 Als Gast fortfahren
             </button>
         </form>
