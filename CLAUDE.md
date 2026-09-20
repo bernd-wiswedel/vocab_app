@@ -16,7 +16,7 @@ page and stored in `session['user']`. UI text, column names, and form values are
 ## Commands
 
 ```bash
-source venv/bin/activate                 # Python 3.12+ required
+source venv/bin/activate                 # Python 3.13+ required
 pip install -r requirements.txt -r requirements-dev.txt
 
 python app.py                            # dev server on 0.0.0.0:5000
@@ -122,8 +122,9 @@ considered for both modes.
 
 ## Deployment
 
-Koyeb/Heroku-style: `Procfile` runs `gunicorn --bind :$PORT app:app`, `runtime.txt` pins the Python
-version. Env vars: `FLASK_SECRET_KEY`, `LOGIN_PASSWORD_<NAME>` for every learner in
+Koyeb/Heroku-style: `Procfile` runs `gunicorn --bind :$PORT app:app`, `.python-version` pins the
+Python minor version (`3.13`, the newest Koyeb offers; patch releases float). Env vars:
+`FLASK_SECRET_KEY`, `LOGIN_PASSWORD_<NAME>` for every learner in
 `configuration.ini`, `GOOGLE_SERVICE_ACCOUNT_JSON`; optional `VOCAB_APP_CONFIG` and
 `FLASK_SESSION_DIR`. The service account must be shared on every learner's spreadsheet. Locally,
 `python app.py` alone gives guest-only logins — export the password vars for password logins.

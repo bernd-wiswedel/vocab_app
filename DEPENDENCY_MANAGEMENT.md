@@ -2,7 +2,7 @@
 
 This document explains the automated dependency management setup for the vocabulary learning app.
 
-**Requirements**: Python 3.12+ (see [PYTHON_VERSION_POLICY.md](PYTHON_VERSION_POLICY.md) for details)
+**Requirements**: Python 3.13+ (see [PYTHON_VERSION_POLICY.md](PYTHON_VERSION_POLICY.md) for details)
 
 ## 🤖 Automated Solutions
 
@@ -166,7 +166,7 @@ The setup includes multiple security tools:
 - **safety**: Community-driven vulnerability database  
 - **GitHub Security Advisories**: Integrated with Dependabot
 
-**Note**: With Python 3.12+ requirement, all modern packages are compatible.
+**Note**: With Python 3.13+ requirement, all modern packages are compatible.
 
 ## 📈 Best Practices
 
@@ -179,7 +179,7 @@ The setup includes multiple security tools:
 - **Security patches**: Apply immediately
 - **Minor updates**: Review and test within a week  
 - **Major updates**: Plan and test thoroughly
-- **Python compatibility**: No concerns with 3.12+ requirement
+- **Python compatibility**: No concerns with 3.13+ requirement
 
 ### 3. Testing Protocol
 - Run automated tests after updates

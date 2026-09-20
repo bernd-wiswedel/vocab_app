@@ -17,11 +17,14 @@ This error occurs when:
 
 ## Solutions Implemented
 
-### 1. ✅ Runtime Configuration (`runtime.txt`)
+### 1. ✅ Runtime Configuration (`.python-version`)
 ```
-python-3.11.10
+3.13
 ```
-This tells Heroku and similar platforms to use Python 3.11.
+This tells Koyeb, Heroku and similar buildpack platforms which Python to use.
+Only the major and minor version is named, so each build picks up the newest
+3.13 patch release. The older `runtime.txt` file is deprecated by these
+buildpacks and is no longer part of this project.
 
 ### 2. ✅ Fixed Requirements (`requirements.txt`)
 Downgraded problematic packages to Python 3.10-compatible versions:
@@ -46,26 +49,29 @@ Added GitHub Actions workflow to test multiple Python versions.
 
 ## Deployment Platform Setup
 
+### Koyeb (this project's deployment)
+1. ✅ `.python-version` with `3.13`
+2. Koyeb supports Python 3.9 through 3.13 and defaults to 3.13, so 3.13 is the
+   newest version available there. Upstream Python is already at 3.14 — bump
+   `.python-version` once Koyeb lists 3.14 as supported.
+
 ### Heroku
-1. ✅ `runtime.txt` with `python-3.11.10`
-2. Verify in Heroku logs: `Python 3.11.10 detected`
+1. ✅ `.python-version` with `3.13`
+2. Verify in the build logs: `Installing Python 3.13.x`
 
 ### Railway
-1. ✅ `runtime.txt` with `python-3.11.10` 
-2. Or set `PYTHON_VERSION=3.11.10` environment variable
+1. ✅ `.python-version` with `3.13`
+2. Or set a `PYTHON_VERSION` environment variable
 
 ### Render
-1. ✅ `runtime.txt` with `python-3.11.10`
+1. ✅ `.python-version` with `3.13`
 2. Or specify in render.yaml
 
 ### Docker
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.13-slim
 # ... rest of Dockerfile
 ```
-
-### Koyeb/Other
-Check platform documentation for Python version specification.
 
 ## Verification Steps
 
@@ -82,7 +88,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Test in CI/CD
-The new `python-compatibility.yml` workflow tests Python 3.10, 3.11, and 3.12.
+The `python-compatibility.yml` workflow tests Python 3.13 and 3.14.
 
 ### 3. Monitor Dependabot PRs
 Dependabot will now avoid creating PRs for incompatible package versions.
@@ -95,9 +101,9 @@ Dependabot will now avoid creating PRs for incompatible package versions.
    python --version
    ```
 
-2. **Verify runtime.txt is read:**
-   - Look for "Python 3.11.10 detected" in build logs
-   - Some platforms require specific Python version format
+2. **Verify `.python-version` is read:**
+   - Look for the installed Python version in the build logs
+   - Some platforms require a specific Python version format
 
 3. **Manual package downgrade:**
    ```bash
@@ -105,11 +111,11 @@ Dependabot will now avoid creating PRs for incompatible package versions.
    pip freeze > requirements.txt
    ```
 
-### If You Want Python 3.11+
+### If You Want a Newer Python
 1. **Update all environments:**
-   - Local development: `pyenv install 3.11.10`
-   - CI/CD: Already updated to Python 3.11
-   - Deployment: `runtime.txt` handles this
+   - Local development: `pyenv install 3.13`
+   - CI/CD: Already updated to Python 3.13
+   - Deployment: `.python-version` handles this
 
 2. **Remove Dependabot ignore rules:**
    - Edit `.github/dependabot.yml`
@@ -123,10 +129,10 @@ Dependabot will now avoid creating PRs for incompatible package versions.
 
 ## Current Status
 ✅ Fixed immediate build failure  
-✅ Set deployment to Python 3.11  
+✅ Set deployment to Python 3.13 via `.python-version`  
 ✅ Protected against future incompatible updates  
 ✅ Added compatibility checking tools  
 
-Your app should now deploy successfully with either:
-- Python 3.10 + compatible package versions (current setup)
-- Python 3.11+ + latest package versions (after removing ignore rules)
+The sections above about Python 3.10 and 3.11 describe the original incident and
+are kept for context only. The project now requires Python 3.13+ everywhere; see
+[PYTHON_VERSION_POLICY.md](PYTHON_VERSION_POLICY.md).

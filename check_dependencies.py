@@ -29,11 +29,11 @@ def get_python_version() -> str:
 def check_python_compatibility(package_name: str, version: str) -> bool:
     """Check if a package version is compatible with current Python version.
     
-    Since we only support Python 3.12+, all modern packages should be compatible.
+    Since we only support Python 3.13+, all modern packages should be compatible.
     """
-    # With Python 3.12+ requirement, all modern packages are compatible
-    if sys.version_info < (3, 12):
-        print(f"⚠️  Python {get_python_version()} detected. This project requires Python 3.12+")
+    # With Python 3.13+ requirement, all modern packages are compatible
+    if sys.version_info < (3, 13):
+        print(f"⚠️  Python {get_python_version()} detected. This project requires Python 3.13+")
         return False
     return True
 
@@ -108,12 +108,12 @@ def check_requirements_file() -> None:
         print(f"  - {len(pinned)} packages with exact versions")
         print(f"  - {len(unpinned)} packages without exact versions")
         
-        # Verify Python 3.12+ requirement
-        if sys.version_info < (3, 12):
-            print(f"\n❌ This project requires Python 3.12+, but you're using {get_python_version()}")
+        # Verify Python 3.13+ requirement
+        if sys.version_info < (3, 13):
+            print(f"\n❌ This project requires Python 3.13+, but you're using {get_python_version()}")
             print("   Please upgrade your Python version")
         else:
-            print(f"\n✅ Python {get_python_version()} meets the 3.12+ requirement")
+            print(f"\n✅ Python {get_python_version()} meets the 3.13+ requirement")
         
         if unpinned:
             print("⚠️  Consider pinning these packages for reproducible builds:")
@@ -139,10 +139,10 @@ def main():
     print("  4. Keep your requirements.txt file up to date")
     print("  5. Use Dependabot for automated dependency updates")
     print(f"  6. Current Python version: {get_python_version()}")
-    if sys.version_info < (3, 12):
-        print("  7. ❌ This project requires Python 3.12+. Please upgrade your Python version")
+    if sys.version_info < (3, 13):
+        print("  7. ❌ This project requires Python 3.13+. Please upgrade your Python version")
     else:
-        print("  7. ✅ Python version meets project requirements (3.12+)")
+        print("  7. ✅ Python version meets project requirements (3.13+)")
 
 if __name__ == "__main__":
     main()

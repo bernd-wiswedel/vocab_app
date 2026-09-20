@@ -321,7 +321,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.12'
+          python-version: '3.13'
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: pytest -m "not slow" --cov --cov-report=xml
       - uses: codecov/codecov-action@v2

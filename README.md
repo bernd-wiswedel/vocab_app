@@ -6,13 +6,13 @@ ChatGPT.
 
 ## Requirements
 
-- **Python 3.12+** (see [PYTHON_VERSION_POLICY.md](PYTHON_VERSION_POLICY.md))
+- **Python 3.13+** (see [PYTHON_VERSION_POLICY.md](PYTHON_VERSION_POLICY.md))
 - Dependencies listed in `requirements.txt`
 
 ## Setup
 
 ```bash
-# Ensure Python 3.12+
+# Ensure Python 3.13+
 python check_python_version.py
 
 # Create virtual environment
