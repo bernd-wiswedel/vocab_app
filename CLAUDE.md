@@ -21,14 +21,23 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 python app.py                            # dev server on 0.0.0.0:5000
 
-pytest -m "not slow"                     # the normal test run (CI runs this)
+pytest -m "not slow and not browser"     # the normal test run (CI runs this)
+pytest -m browser                        # the round in a real browser (CI runs this too)
+pytest -m sheets                         # against the real Google Sheet — run by hand
 pytest tests/test_level.py::TestLevelSystem::test_is_expired_respects_max_days  # single test
-pytest --cov=level --cov=google_sheet_io --cov=app --cov-report=term-missing -m "not slow"
+pytest --cov=level --cov=google_sheet_io --cov=app --cov-report=term-missing -m "not slow and not browser"
 ./run_tests.sh help                      # wrapper with presets (fast/unit/app/coverage/...)
 ```
 
-`-m "not slow"` matters: the one `@pytest.mark.slow` test (`test_fetch_data_real_sheets`) calls the
-live Google Sheets API and needs real service-account credentials. Everything else is mocked.
+The markers matter. `browser` drives headless Chrome through Playwright and is the only cover the
+round's JavaScript has; it skips without a browser. `sheets` talks to the real Sheets API and is
+the only cover the Google boundary has — tab names, gids, the A:C layout, `values.batchUpdate`,
+auth; it skips without credentials.
+
+**Please run `pytest -m sheets` by hand after touching `google_sheet_io.py` or anything about the
+sheet layout.** It is deliberately not automated: it needs the service-account key, which is not
+worth handing to CI, and it writes to a shared fixture spreadsheet. It takes about ten seconds and
+puts the sheet back as it found it.
 
 Dependency helpers (mirroring the weekly GitHub Actions jobs): `python check_dependencies.py`,
 `python update_dependencies.py [--security-only|--interactive]`, `python check_python_version.py`.
