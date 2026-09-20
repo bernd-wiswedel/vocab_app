@@ -68,6 +68,13 @@ class TestAuthentication:
         assert b'<option value="Bob" selected>' in response.data
         assert b'<option value="Alice" selected>' not in response.data
 
+    def test_login_page_has_favicon_and_password_toggle(self, client):
+        """Test the favicon link and the show-password button on the login page."""
+        html = client.get('/login').data.decode()
+        assert 'rel="icon"' in html and 'favicon.svg' in html
+        assert 'id="passwordToggle"' in html
+        assert client.get('/static/favicon.svg').status_code == 200
+
     def test_login_page_exposes_username_to_password_managers(self, client):
         """Test the hidden username mirror that lets browsers save one password per learner."""
         response = client.get('/login?user=Bob')
