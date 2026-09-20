@@ -25,114 +25,193 @@
         {% endif %}
     </div>
     <div class="wrapper-container">
-        <!-- Progress Bar -->
         <div class="test-progress">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <strong>Progress: {{ completed_terms }}/{{ total_terms }}</strong>
-                <span>{{ progress_percentage }}%</span>
+                <strong>Progress: <span id="completed-terms"></span>/<span id="total-terms"></span></strong>
+                <span><span id="progress-percentage"></span>%</span>
             </div>
             <div class="progress-bar-container">
-                <div class="progress-bar-fill" style="width: {{ progress_percentage }}%;"></div>
+                <div class="progress-bar-fill" id="progress-bar-fill"></div>
             </div>
             <div class="progress-stats">
                 <div class="stat correct">
                     <span>✓</span>
-                    <span>{{ correct_count }} correct</span>
+                    <span><span id="correct-count"></span> correct</span>
                 </div>
                 <div class="stat wrong">
                     <span>✗</span>
-                    <span>{{ wrong_count }} wrong</span>
+                    <span><span id="wrong-count"></span> wrong</span>
                 </div>
             </div>
         </div>
-        
+
         <div class="content-container">
-            {% if not guest_mode %}
-            <div class="status-info">
-                {% with item = current_data %}
-                    {% include '_status_display.html' %}
-                {% endwith %}
+            {# One status line per position, rendered by the shared include; the
+               script shows the one of the current question. #}
+            {% for item in status_items %}
+            <div class="status-info" data-position="{{ loop.index0 }}" hidden>
+                {% include '_status_display.html' %}
             </div>
-            {% endif %}
-            <p><strong>{{ label_term }}:</strong> {{ current_data[term_key] if show_term else current_data[translation_key] }}</p>
-            {% if show_translation %}
-                {% if comment_key and current_data[language_key] != 'Englisch' %}
-                    <p><strong>Zusatz:</strong> {{ current_data[comment_key] }}</p>
-                {% endif %}
-                <p><strong>{{ label_translation }}:</strong> {{ current_data[translation_key] if show_term else current_data[term_key] }}</p>
-                {% if comment_key and current_data[language_key] == 'Englisch' and current_data[comment_key] %}
-                    <p><strong>Zusatz:</strong> {{ current_data[comment_key] }}</p>
-                {% endif %}
-            {% endif %}
+            {% endfor %}
+            <p><strong id="label-question"></strong> <span id="question"></span></p>
+            <div id="answer" hidden>
+                <p id="comment-before" hidden><strong>Zusatz:</strong> <span></span></p>
+                <p><strong id="label-answer"></strong> <span id="answer-text"></span></p>
+                <p id="comment-after" hidden><strong>Zusatz:</strong> <span></span></p>
+            </div>
         </div>
         <div class="button-container">
-            {% if show_translation %}
-                <form action="{{ url_for('check_answer') }}" method="post" style="display: inline;">
-                    <button type="submit" name="answer_correct" value="Richtig">Richtig</button>
-                    <button type="submit" name="answer_correct" value="Falsch">Falsch</button>
-                </form>
-            {% else %}
-                <form action="{{ url_for('show_translation') }}" method="post" style="display: inline;">
-                    <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
-                    <button type="submit">Übersetzung</button>
-                </form>
-                <form action="{{ url_for('skip_question') }}" method="post" style="display: inline;">
-                    <button type="submit">{{ icon('forward') }} Skip</button>
-                </form>
-                <form action="{{ url_for('switch_direction') }}" method="post" style="display: inline;">
-                    <input type="hidden" name="current_data" value='{{ current_data | tojson | safe }}'>
-                    <button type="submit">{{ icon('exchange') }} Switch</button>
-                </form>
-                <form action="{{ url_for('review') }}" method="get" style="display: inline;">
-                    <button type="submit">Auswertung</button>
-                </form>
-            {% endif %}
+            <div id="ask-buttons">
+                <button type="button" id="reveal">Übersetzung</button>
+                <button type="button" id="skip">{{ icon('forward') }} Skip</button>
+                <button type="button" id="switch">{{ icon('exchange') }} Switch</button>
+                <button type="button" id="finish">Auswertung</button>
+            </div>
+            <div id="grade-buttons" hidden>
+                <button type="button" class="grade" data-answer="Richtig">Richtig</button>
+                <button type="button" class="grade" data-answer="Falsch">Falsch</button>
+            </div>
         </div>
     </div>
 
+    <form id="finish-form" action="{{ url_for('finish_test') }}" method="post" hidden>
+        <input type="hidden" name="round_id" value="{{ round_data.id }}">
+        <input type="hidden" name="answers" id="answers">
+    </form>
+
+    <script type="application/json" id="round-data">{{ round_data | tojson }}</script>
     <script>
-        // Every button on this page is a full page navigation, and /check_answer
-        // identifies the answered term from the server-side cursor alone - it
-        // carries no reference to the term that was on screen. A second tap before
-        // the next page arrives therefore grades the *following*, unseen term.
-        // Guard every form here against that second submission.
+        // The whole round is in #round-data; this script asks the questions and
+        // reports every graded answer to /finish_test in one POST at the end.
         (function () {
             'use strict';
 
-            function buttons(form) {
-                return Array.prototype.slice.call(form.querySelectorAll('button'));
-            }
+            var round = JSON.parse(document.getElementById('round-data').textContent);
+            var items = round.items;
+            var storageKey = 'wortspass-round-' + round.id;
+            var position = 0;
+            var answers = [];   // {position, answer: 'Richtig'|'Falsch'}, in the order graded
+            var showTerm = true;
+            var revealed = false;
 
-            function guard(form) {
-                form.addEventListener('submit', function (event) {
-                    if (form.dataset.submitting === 'true') {
-                        event.preventDefault();
-                        return;
+            function byId(id) { return document.getElementById(id); }
+
+            // A reload or a return via the back button must not restart the round,
+            // so the progress lives in sessionStorage until the round is reported.
+            function restore() {
+                try {
+                    Object.keys(sessionStorage).forEach(function (key) {
+                        if (key.indexOf('wortspass-round-') === 0 && key !== storageKey) {
+                            sessionStorage.removeItem(key);
+                        }
+                    });
+                    var saved = JSON.parse(sessionStorage.getItem(storageKey));
+                    if (saved && Array.isArray(saved.answers)) {
+                        answers = saved.answers;
+                        position = Math.min(saved.position | 0, items.length);
                     }
-                    form.dataset.submitting = 'true';
-                    // Disabling the buttons here would drop the pressed button's
-                    // name/value from the request body, because disabled controls
-                    // are left out of the form data. So the flag above is what
-                    // actually prevents the double answer; this only greys the
-                    // buttons out once the submission is under way.
-                    setTimeout(function () {
-                        buttons(form).forEach(function (button) { button.disabled = true; });
-                    }, 0);
-                });
+                } catch (e) { /* storage unavailable: the round simply starts over */ }
             }
 
-            var forms = Array.prototype.slice.call(document.querySelectorAll('form'));
-            forms.forEach(guard);
+            function persist() {
+                try {
+                    sessionStorage.setItem(storageKey, JSON.stringify({position: position, answers: answers}));
+                } catch (e) { /* see restore() */ }
+            }
 
-            // Going back reaches this page from the bfcache with the guard still
-            // armed and the buttons dead, so release it.
-            window.addEventListener('pageshow', function (event) {
-                if (!event.persisted) return;
-                forms.forEach(function (form) {
-                    delete form.dataset.submitting;
-                    buttons(form).forEach(function (button) { button.disabled = false; });
+            function results() {
+                var current = items.map(function (item) { return item.result; });
+                answers.forEach(function (a) { current[a.position] = a.answer === 'Richtig' ? 'correct' : 'wrong'; });
+                return current;
+            }
+
+            function renderProgress() {
+                var current = results();
+                var count = function (result) {
+                    return current.filter(function (r) { return r === result; }).length;
+                };
+                var total = items.length;
+                var percentage = total ? Math.floor(position / total * 100) : 0;
+                byId('completed-terms').textContent = position;
+                byId('total-terms').textContent = total;
+                byId('progress-percentage').textContent = percentage;
+                byId('progress-bar-fill').style.width = percentage + '%';
+                byId('correct-count').textContent = round.base.correct + count('correct');
+                byId('wrong-count').textContent = round.base.wrong + count('wrong');
+            }
+
+            function setComment(id, text) {
+                var p = byId(id);
+                p.querySelector('span').textContent = text;
+                p.hidden = !text;
+            }
+
+            function renderQuestion() {
+                var item = items[position];
+                var labels = round.labels[item.language][showTerm ? 0 : 1];
+                byId('label-question').textContent = labels.label_term + ':';
+                byId('question').textContent = showTerm ? item.term : item.translation;
+                byId('label-answer').textContent = labels.label_translation + ':';
+                byId('answer-text').textContent = showTerm ? item.translation : item.term;
+                // The grammar note goes with the foreign term: above the German
+                // for Latin, below the English word otherwise.
+                var english = item.language === 'Englisch';
+                setComment('comment-before', english ? '' : item.comment);
+                setComment('comment-after', english ? item.comment : '');
+
+                document.querySelectorAll('.status-info').forEach(function (status) {
+                    status.hidden = Number(status.dataset.position) !== position;
+                });
+                byId('answer').hidden = !revealed;
+                byId('ask-buttons').hidden = revealed;
+                byId('grade-buttons').hidden = !revealed;
+            }
+
+            function finish() {
+                byId('answers').value = JSON.stringify(answers);
+                try { sessionStorage.removeItem(storageKey); } catch (e) { /* see restore() */ }
+                byId('finish-form').submit();
+            }
+
+            function advance() {
+                position += 1;
+                revealed = false;
+                persist();
+                if (position >= items.length) {
+                    finish();
+                    return;
+                }
+                render();
+            }
+
+            function render() {
+                renderProgress();
+                renderQuestion();
+            }
+
+            byId('reveal').addEventListener('click', function () {
+                revealed = true;
+                renderQuestion();
+            });
+            byId('skip').addEventListener('click', advance);
+            byId('switch').addEventListener('click', function () {
+                showTerm = !showTerm;
+                renderQuestion();
+            });
+            byId('finish').addEventListener('click', finish);
+            document.querySelectorAll('.grade').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    answers.push({position: position, answer: button.dataset.answer});
+                    advance();
                 });
             });
+
+            restore();
+            if (position >= items.length) {
+                finish();
+            } else {
+                render();
+            }
         })();
     </script>
 </body>

@@ -82,24 +82,36 @@ through the env var *before* `app` is imported (conftest does this), not via `ap
 Credentials resolve in this order: `GOOGLE_SERVICE_ACCOUNT_JSON` env var (production) →
 `keys/vocab-app-*.json` (local, gitignored).
 
-### Test-session state machine
+### Test-round state machine
 
-A running test is four session keys, and most bugs in this area come from treating them
+A test is three session keys, and most bugs in this area come from treating them
 independently:
 
-- `test_data` — flat list of dicts (converted from `(term, score)` tuples by
-  `_convert_vocab_tuples_to_dict`), each carrying `test_result` ∈ `correct`/`wrong`/`skipped`,
-  initialized to `skipped`.
-- `order` — list of *indices into `test_data`*, shuffled. `/test_errors` rebuilds `order` from the
-  wrong and skipped indices (wrong first) instead of building a new `test_data`.
-- `current_position` — cursor into `order`, advanced by `/check_answer` and `/skip_question`.
-  `_get_position_in_test()` walks forward past already-correct terms and returns `-1` when done,
-  which is what redirects to `/review`.
-- `show_term` — test direction; `/switch_direction` toggles it and re-renders the *same* question.
+- `test_data` — flat list of dicts (built by `_new_test_data` from `(term, score)` tuples), each
+  carrying `test_result` ∈ `correct`/`wrong`/`skipped`, initialized to `skipped`. Its
+  `score_status`/`score_date` are the level the term had when the test started (or was last
+  saved, see below); answering does not move them.
+- `order` — list of *indices into `test_data`* for the current round, shuffled. Non-empty exactly
+  while a round is in progress (`_begin_round` / `_end_round`). `/test_errors` rebuilds it from
+  the wrong and skipped indices (wrong first) instead of building a new `test_data`.
+- `round_id` — random token set together with `order`. The browser has to echo it, so a stale tab
+  cannot report positions against a different round.
 
-Score changes are applied twice on each answer — into `test_data[position]` and into the
-`VocabularyDatabase` in the session — and only flushed to Sheets when the user saves from
-`/review` (`/write_scores`, grouped per language).
+The browser runs the round. `GET /test` embeds every term of `order` as JSON in `#round-data`
+(keys `term`/`translation`/`comment`/`language`/`result`, plus `labels` from
+`_get_language_labels()` for both directions and `base` counts of the terms outside the round)
+and one pre-rendered `_status_display.html` block per position. The script in
+`templates/test.html` does reveal, skip, switch-direction and grading in memory and keeps its
+cursor in `sessionStorage`, so a reload resumes. It reports once: `POST /finish_test` with
+`round_id` and `answers`, a JSON list of `{"position": <index into the round>, "answer":
+"Richtig"|"Falsch"}`. The server maps positions through `order`, sets `test_result`, empties
+`order` and redirects to `/review`. "Auswertung" posts the answers so far the same way.
+
+Levels move only when saving. `_projected_score()` runs `LevelSystem.process_answer` on the
+original level and the final `test_result`; `/review` shows that projection, `/write_scores`
+writes it and then copies it into `test_data` and the `VocabularyDatabase` and flags the item
+`saved`, so a second save writes nothing and a later projection starts from what the sheet now
+says. `/finish_test` clears `saved` when a term is answered again.
 
 ### Guest mode
 
@@ -117,8 +129,10 @@ considered for both modes.
 - `_add_status_info_to_data()` adds `current_status` / `days_until_retest` / `days_until_expire`;
   `templates/_status_display.html` is included by practice, test, and review and expects exactly
   those keys.
-- Selected items travel through forms as `term|translation|language`, joined with `||`
-  (`/test_selected`, `/write_scores`).
+- Selected rows travel through forms as indices, never as term strings: `/test_selected` gets
+  comma-separated indices into the practice page's row list and re-derives that list with
+  `_practice_rows()` from the `language` and `categories` fields the page carries along;
+  `/write_scores` gets indices into `test_data`; `/finish_test` gets positions into the round.
 
 ## Deployment
 
