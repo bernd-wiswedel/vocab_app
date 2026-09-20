@@ -1,3 +1,4 @@
+{% from '_icons.html' import icon, icon_sprite -%}
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -9,16 +10,16 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="manifest" href="{{ url_for('manifest', user=session.get('user')) }}">
     <meta name="theme-color" content="#007bff">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
+    {{ icon_sprite() }}
     <div class="header">
         <h1>{{ user }}s WortSpaß</h1>
     </div>
     
     <div class="loading-container">
         <div id="loading-section">
-            <i class="fas fa-sync-alt loading-spinner"></i>
+            {{ icon('refresh', 'loading-spinner') }}
             <div class="loading-message">
                 {% if source == 'reload' %}
                     Vokabeldaten werden neu geladen...
@@ -67,7 +68,7 @@
             if (success) {
                 resultMessage.className = 'success-message';
                 resultMessage.innerHTML = `
-                    <i class="fas fa-check-circle"></i><br>
+                    ${iconHtml('check-circle')}<br>
                     ${message}
                 `;
                 document.getElementById('continue-button').style.display = 'inline-block';
@@ -79,7 +80,7 @@
             } else {
                 resultMessage.className = 'error-message';
                 resultMessage.innerHTML = `
-                    <i class="fas fa-exclamation-triangle"></i><br>
+                    ${iconHtml('warning')}<br>
                     ${message}
                 `;
                 document.getElementById('retry-button').style.display = 'inline-block';

@@ -1,3 +1,4 @@
+{% from '_icons.html' import icon, icon_sprite -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,7 +10,6 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="manifest" href="{{ url_for('manifest', user=session.get('user')) }}">
     <meta name="theme-color" content="#007bff">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script>
         let currentLessons = [];
         let currentSortColumn = 'index'; // default sort by lesson index
@@ -70,8 +70,8 @@
                     <td>${lesson.title}</td>
                     <td>${lesson.count}</td>
                     <td>
-                        <i class="fas fa-circle status-icon status-${lesson.best_status.toLowerCase().replace('-', '')}"></i>
-                        <i class="fas fa-circle status-icon status-${lesson.worst_status.toLowerCase().replace('-', '')}"></i>
+                        ${iconHtml('circle', 'status-icon status-' + lesson.best_status.toLowerCase().replace('-', ''))}
+                        ${iconHtml('circle', 'status-icon status-' + lesson.worst_status.toLowerCase().replace('-', ''))}
                     </td>
                     <td>${lesson.urgency_days !== null ? lesson.urgency_days + ' Tage' : '-'}</td>
                 `;
@@ -160,6 +160,7 @@
     </script>
 </head>
 <body>
+    {{ icon_sprite() }}
     <div class="header">
         <h1>{{ user }}s WortSpaß</h1>
         {% if guest_mode %}
@@ -222,7 +223,7 @@
         </form>
         <form action="/reload_data" method="post" onsubmit="disableReloadButton()">
             <button type="submit" id="reload_button">
-                <i class="fas fa-sync"></i> Reload
+                {{ icon('refresh') }} Reload
             </button>
         </form>
     </div>

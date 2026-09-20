@@ -1,0 +1,78 @@
+{#
+  Inline SVG icon set, replacing the Font Awesome stylesheet that used to be
+  pulled from cdnjs on every page load. A third-party origin in the critical
+  path meant every click waited on it; these ship with the page.
+
+  Sizing and colour come from the surrounding CSS exactly as they did for the
+  <i> glyphs: the symbols are 1em square and paint in currentColor, so rules
+  like ".status-icon { font-size: 12px }" and ".correct-icon { color: ... }"
+  keep working unchanged.
+
+  Import the macros, emit the sprite once directly after <body>, then call
+  icon(name) or icon(name, extra_css_classes) wherever a glyph is needed.
+  For markup that JavaScript builds at runtime, use the iconHtml(name, cls)
+  helper that the sprite defines.
+#}
+
+{% macro icon(name, cls='') -%}
+<svg class="icon{% if cls %} {{ cls }}{% endif %}" aria-hidden="true"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro icon_sprite() -%}
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-circle" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="7" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 12.5l5.5 5.5L20 6.5"/>
+  </symbol>
+  <symbol id="i-times" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+    <path d="M6 6l12 12M18 6L6 18"/>
+  </symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M7.5 12.5l3 3 6-6"/>
+  </symbol>
+  <symbol id="i-times-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/>
+  </symbol>
+  <symbol id="i-forward" viewBox="0 0 24 24">
+    <path d="M3 5l8 7-8 7V5z" fill="currentColor"/>
+    <path d="M13 5l8 7-8 7V5z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-exchange" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9h13M13 5l4 4-4 4"/>
+    <path d="M20 15H7M11 19l-4-4 4-4"/>
+  </symbol>
+  <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h12l4 4v12H4z"/>
+    <path d="M8 4v6h7V4"/>
+    <path d="M8 20v-6h8v6"/>
+  </symbol>
+  <symbol id="i-list" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M9 6h11M9 12h11M9 18h11"/>
+    </g>
+    <circle cx="4.5" cy="6" r="1.5" fill="currentColor"/>
+    <circle cx="4.5" cy="12" r="1.5" fill="currentColor"/>
+    <circle cx="4.5" cy="18" r="1.5" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24">
+    <path d="M12 3L1.5 21h21L12 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M12 10v4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="12" cy="17.8" r="1.2" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17.66 6.34A8 8 0 1 1 12 4"/>
+    <path d="M12 1l3.2 3-3.2 3"/>
+  </symbol>
+</svg>
+<script>
+    // Same icons for markup that JavaScript builds at runtime.
+    function iconHtml(name, cls) {
+        return '<svg class="icon' + (cls ? ' ' + cls : '') + '" aria-hidden="true">'
+             + '<use href="#i-' + name + '"></use></svg>';
+    }
+</script>
+{%- endmacro %}
