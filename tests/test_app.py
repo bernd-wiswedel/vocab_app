@@ -68,6 +68,15 @@ class TestAuthentication:
         assert b'<option value="Bob" selected>' in response.data
         assert b'<option value="Alice" selected>' not in response.data
 
+    def test_login_page_exposes_username_to_password_managers(self, client):
+        """Test the hidden username mirror that lets browsers save one password per learner."""
+        response = client.get('/login?user=Bob')
+        html = response.data.decode()
+        assert 'name="username"' in html
+        assert 'autocomplete="username"' in html
+        assert 'value="Bob"' in html
+        assert 'autocomplete="current-password"' in html
+
     def test_login_page_ignores_unknown_query_user(self, client):
         """Test that an unknown ?user falls back to the first configured learner."""
         response = client.get('/login?user=Mallory')
