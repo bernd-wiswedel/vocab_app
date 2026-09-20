@@ -1045,3 +1045,77 @@ class TestUtilityFunctions:
         assert len(order) == 10
         assert set(order) == set(range(10))
         assert order != list(range(10))  # Very unlikely to be in order
+
+
+class TestSessionPersistence:
+    """
+    What may and may not write the session.
+
+    Flask-Session writes the whole session back from the snapshot the request
+    read, so a request that writes without having changed anything undoes a
+    concurrent request that did change something. Two rules keep that from
+    happening: a request that changes nothing writes nothing, and a request that
+    changes nested data says so.
+    """
+
+    def _count_writes(self, monkeypatch):
+        writes = []
+        interface = flask_app.session_interface
+        original = interface._upsert_session
+
+        def spy(lifetime, session_obj, store_id):
+            writes.append(store_id)
+            return original(lifetime, session_obj, store_id)
+
+        monkeypatch.setattr(interface, '_upsert_session', spy)
+        return writes
+
+    def test_a_request_that_changes_nothing_writes_nothing(
+            self, authenticated_client, mock_vocab_data, monkeypatch):
+        mock_vocab_data(authenticated_client)
+        authenticated_client.post('/start_test',
+                                  data={'language': 'Latein', 'categories': 'Lektion 1'})
+
+        writes = self._count_writes(monkeypatch)
+        authenticated_client.get('/')
+        authenticated_client.get('/test')
+        authenticated_client.get('/static/styles.css')
+
+        assert writes == [], f"read-only requests wrote the session {len(writes)} times"
+
+    def test_a_request_that_changes_nested_data_does_write(
+            self, authenticated_client, mock_vocab_data, monkeypatch):
+        mock_vocab_data(authenticated_client)
+        authenticated_client.post('/start_test',
+                                  data={'language': 'Latein', 'categories': 'Lektion 1'})
+        round_data = _round_data(authenticated_client.get('/test'))
+
+        writes = self._count_writes(monkeypatch)
+        authenticated_client.post('/finish_test', data={
+            'round_id': round_data['id'],
+            'answers': json.dumps([{'position': 0, 'answer': 'Richtig'}]),
+        })
+
+        # test_result is set on a dict inside session['test_data'], which Flask
+        # cannot see by itself
+        assert writes, "a graded answer was not persisted"
+
+    def test_a_later_read_cannot_roll_back_a_graded_answer(
+            self, authenticated_client, mock_vocab_data):
+        """The interleaving the rules above exist to prevent."""
+        mock_vocab_data(authenticated_client)
+        authenticated_client.post('/start_test',
+                                  data={'language': 'Latein', 'categories': 'Lektion 1'})
+        round_data = _round_data(authenticated_client.get('/test'))
+        graded_term = round_data['items'][0]['term']
+
+        authenticated_client.post('/finish_test', data={
+            'round_id': round_data['id'],
+            'answers': json.dumps([{'position': 0, 'answer': 'Richtig'}]),
+        })
+        # a request carrying the pre-grading snapshot, arriving afterwards
+        authenticated_client.get('/static/styles.css')
+
+        with authenticated_client.session_transaction() as sess:
+            results = {item['Fremdsprache']: item['test_result'] for item in sess['test_data']}
+        assert results[graded_term] == 'correct'
