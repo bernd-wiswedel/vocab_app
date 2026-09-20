@@ -40,13 +40,16 @@
                 </tr>
             </thead>
             <tbody>
+                {% set row = namespace(index=0) %}
                 {% for category, items in vocab_data.items() %}
                     <tr>
                         <td colspan="5" class="category-header">{{ category }}</td>
                     </tr>
                     {% for item in items %}
-                        <tr class="item-row" data-row-index="{{ loop.index0 }}">
-                            <td class="checkbox-cell"><input type="checkbox" name="item-checkbox" value="{{ item[col_name_term] }}|{{ item[col_name_translation] }}|{{ language }}"></td>
+                        <tr class="item-row" data-row-index="{{ row.index }}">
+                            {# /test_selected resolves this index against the same list, see _practice_rows #}
+                            <td class="checkbox-cell"><input type="checkbox" name="item-checkbox" value="{{ row.index }}"></td>
+                            {% set row.index = row.index + 1 %}
                             <td>{{ item[col_name_term] }}</td>
                             {% if language == 'Latein' %}
                                 <td>{{ item[col_name_comment] }}</td>
@@ -77,6 +80,8 @@
             <button type="button" onclick="exitRangeMode()" class="btn-small">Fertig</button>
         </div>
         <form id="test-selected-form" action="/test_selected" method="post">
+            <input type="hidden" name="language" value="{{ language }}">
+            <input type="hidden" name="categories" value="{{ categories }}">
             <input type="hidden" name="selected-items" id="selected-items-input">
             <button type="submit" id="test-selected-button" disabled>Ausgewählte testen</button>
         </form>
@@ -249,7 +254,7 @@
                 }
                 
                 const selectedItems = Array.from(checkedCheckboxes).map(cb => cb.value);
-                document.querySelector(SELECTORS.selectedItemsInput).value = selectedItems.join('||');
+                document.querySelector(SELECTORS.selectedItemsInput).value = selectedItems.join(',');
             }
             
             // ========================================

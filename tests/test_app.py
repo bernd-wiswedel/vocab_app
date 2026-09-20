@@ -2,6 +2,7 @@
 
 import pytest
 import json
+import re
 from datetime import date, timedelta
 from flask import session
 from unittest.mock import patch, MagicMock
@@ -398,295 +399,355 @@ class TestPracticeMode:
         assert response.status_code == 200
 
 
+def _round_data(response):
+    """The round the test page hands to the browser."""
+    html = response.data.decode()
+    marker = '<script type="application/json" id="round-data">'
+    start = html.index(marker) + len(marker)
+    return json.loads(html[start:html.index('</script>', start)])
+
+
+def _put_round(client, test_data, order, round_id='round-1'):
+    with client.session_transaction() as sess:
+        sess['test_data'] = test_data
+        sess['order'] = order
+        sess['round_id'] = round_id
+
+
+def _finish(client, answers, round_id='round-1'):
+    return client.post('/finish_test', data={
+        'round_id': round_id,
+        'answers': json.dumps(answers),
+    }, follow_redirects=False)
+
+
 class TestTestMode:
-    """Test quiz/test mode functionality."""
-    
+    """The test page: one GET hands the round over, one POST reports the answers."""
+
     def test_start_test(self, authenticated_client, sample_vocab_database, mock_vocab_data):
-        """Test starting a new test."""
         mock_vocab_data(authenticated_client)
-        
+
         response = authenticated_client.post('/start_test', data={
             'language': 'Latein',
             'categories': 'Lektion 1'
         }, follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/test' in response.location
-        
-        # Check session data
+
         with authenticated_client.session_transaction() as sess:
-            assert 'test_data' in sess
-            assert 'order' in sess
-            assert 'current_position' in sess
-            assert sess['current_position'] == 0
-    
+            assert len(sess['test_data']) == 2
+            assert all(term['test_result'] == 'skipped' for term in sess['test_data'])
+            assert sorted(sess['order']) == [0, 1]
+            assert sess['round_id']
+            # The browser owns the cursor and the direction
+            assert 'current_position' not in sess
+            assert 'show_term' not in sess
+
     def test_start_test_guest_mode(self, guest_client, sample_vocab_database, mock_vocab_data):
-        """Test starting test in guest mode."""
         mock_vocab_data(guest_client)
-        
+
         response = guest_client.post('/start_test', data={
             'language': 'Latein',
             'categories': 'Lektion 1'
         }, follow_redirects=False)
-        
+
         assert response.status_code == 302
-        
+
         with guest_client.session_transaction() as sess:
             assert 'test_data' in sess
-    
-    def test_test_page_renders(self, authenticated_client, sample_test_data):
-        """Test that test page renders with test data."""
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data
-            sess['order'] = [0, 1]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
+
+    def test_test_page_embeds_the_round(self, authenticated_client, sample_test_data):
+        _put_round(authenticated_client, sample_test_data, [1, 0])
+
         response = authenticated_client.get('/test')
-        
+
         assert response.status_code == 200
-        # Should show the first term
-        assert b'domus' in response.data or b'das Haus' in response.data
-    
+        html = response.data.decode()
+        round_data = _round_data(response)
+        assert round_data['id'] == 'round-1'
+        assert [item['term'] for item in round_data['items']] == ['templum', 'domus']
+        assert round_data['items'][0]['translation'] == 'der Tempel'
+        assert round_data['items'][0]['comment'] == 'templī n.'
+        assert round_data['items'][0]['result'] == 'skipped'
+        assert round_data['base'] == {'correct': 0, 'wrong': 0}
+        # Labels for both directions come from _get_language_labels
+        assert round_data['labels']['Latein'][0]['label_term'] == 'Latein'
+        assert round_data['labels']['Latein'][1]['label_term'] == 'Deutsch'
+        # One pre-rendered status line per position, templum (Red-2) first
+        assert html.count('class="status-info"') == 2
+        assert 'data-position="1"' in html
+        assert 'level-badge level-red">2<' in html
+
+    def test_test_page_does_not_leak_scores(self, authenticated_client, sample_test_data):
+        _put_round(authenticated_client, sample_test_data, [0, 1])
+        round_data = _round_data(authenticated_client.get('/test'))
+        assert set(round_data['items'][0]) == {'term', 'translation', 'comment', 'language', 'result'}
+
+    def test_test_page_guest_mode_has_no_status(self, guest_client, sample_test_data):
+        _put_round(guest_client, sample_test_data, [0, 1])
+
+        response = guest_client.get('/test')
+
+        assert response.status_code == 200
+        assert 'class="status-info"' not in response.data.decode()
+        assert 'Gast-Modus' in response.data.decode()
+
+    def test_test_page_counts_terms_outside_the_round(self, authenticated_client, sample_test_data):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+        test_data[1]['test_result'] = 'wrong'
+        _put_round(authenticated_client, test_data, [1])
+
+        round_data = _round_data(authenticated_client.get('/test'))
+
+        assert round_data['base'] == {'correct': 1, 'wrong': 0}
+        assert round_data['items'][0]['result'] == 'wrong'
+
     def test_test_redirect_when_no_data(self, authenticated_client):
-        """Test that test redirects to index when no test data."""
         response = authenticated_client.get('/test', follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/' in response.location
-    
-    def test_show_translation(self, authenticated_client, sample_test_data):
-        """Test showing translation during test."""
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data
-            sess['order'] = [0]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
-        current_data = sample_test_data[0].copy()
-        current_data['current_status'] = current_data.get('score_status', 'Red-1')
-        current_data['days_until_retest'] = 0
-        current_data['days_until_expire'] = None
-        
-        response = authenticated_client.post('/show_translation', data={
-            'current_data': json.dumps(current_data)
-        })
-        
-        assert response.status_code == 200
-        # Should show both term and translation
-        assert b'domus' in response.data
-        assert b'das Haus' in response.data
-    
-    def test_check_answer_correct(self, authenticated_client, sample_test_data):
-        """Test submitting a correct answer."""
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data.copy()
-            sess['order'] = [0, 1]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
-        response = authenticated_client.post('/check_answer', data={
-            'answer_correct': 'Richtig'
-        }, follow_redirects=False)
-        
-        assert response.status_code == 302
-        
-        with authenticated_client.session_transaction() as sess:
-            # First item should be marked correct
-            assert sess['test_data'][0]['test_result'] == 'correct'
-            # Position should advance
-            assert sess['current_position'] == 1
-    
-    def test_check_answer_wrong(self, authenticated_client, sample_test_data):
-        """Test submitting a wrong answer."""
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data.copy()
-            sess['order'] = [0, 1]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
-        response = authenticated_client.post('/check_answer', data={
-            'answer_correct': 'Falsch'
-        }, follow_redirects=False)
-        
-        assert response.status_code == 302
-        
-        with authenticated_client.session_transaction() as sess:
-            # First item should be marked wrong
-            assert sess['test_data'][0]['test_result'] == 'wrong'
-            # In authenticated mode, should update to Red-1
-            assert sess['test_data'][0]['score_status'] == 'Red-1'
-    
-    def test_check_answer_guest_mode_no_level_update(self, guest_client, sample_test_data):
-        """Test that guest mode doesn't update levels."""
-        with guest_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data.copy()
-            sess['order'] = [0]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
-        original_status = sample_test_data[0]['score_status']
-        
-        guest_client.post('/check_answer', data={'answer_correct': 'Falsch'})
-        
-        with guest_client.session_transaction() as sess:
-            # In guest mode, level should not change
-            assert sess['test_data'][0]['score_status'] == original_status
-    
-    def test_skip_question(self, authenticated_client, sample_test_data):
-        """Test skipping a question."""
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data.copy()
-            sess['order'] = [0, 1]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
-        response = authenticated_client.post('/skip_question', follow_redirects=False)
-        
-        assert response.status_code == 302
-        
-        with authenticated_client.session_transaction() as sess:
-            # Should advance position
-            assert sess['current_position'] == 1
-            # Test result should remain 'skipped'
-            assert sess['test_data'][0]['test_result'] == 'skipped'
-    
-    def test_switch_direction(self, authenticated_client, sample_test_data):
-        """Test switching test direction (term ↔ translation)."""
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = sample_test_data
-            sess['order'] = [0]
-            sess['current_position'] = 0
-            sess['show_term'] = True
-        
-        current_data = sample_test_data[0]
-        
-        response = authenticated_client.post('/switch_direction', data={
-            'current_data': json.dumps(current_data)
-        })
-        
-        assert response.status_code == 200
-        
-        with authenticated_client.session_transaction() as sess:
-            # Direction should be toggled
-            assert sess['show_term'] is False
-    
-    def test_test_completion_redirects_to_review(self, authenticated_client, sample_test_data):
-        """Test that completing all questions redirects to review."""
-        # Mark all as correct
-        test_data = sample_test_data.copy()
-        for item in test_data:
-            item['test_result'] = 'correct'
-        
-        with authenticated_client.session_transaction() as sess:
-            sess['test_data'] = test_data
-            sess['order'] = [0, 1]
-            sess['current_position'] = 2  # Past the end
-            sess['show_term'] = True
-        
+
+    def test_test_redirects_to_review_when_round_is_over(self, authenticated_client, sample_test_data):
+        _put_round(authenticated_client, sample_test_data, [])
+
         response = authenticated_client.get('/test', follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/review' in response.location
 
+    def test_finish_test_records_answers_but_no_level(self, authenticated_client, sample_test_data):
+        _put_round(authenticated_client, sample_test_data, [1, 0])
 
-class TestTestSelected:
-    """Test starting a test with selected items."""
-    
-    def test_test_selected(self, authenticated_client, sample_vocab_database, mock_vocab_data):
-        """Test starting test with manually selected items."""
-        mock_vocab_data(authenticated_client)
-        
-        # Format: "term|translation|language"
-        selected_items = "domus|das Haus|Latein||templum|der Tempel|Latein"
-        
-        response = authenticated_client.post('/test_selected', data={
-            'selected-items': selected_items
-        }, follow_redirects=False)
-        
+        response = _finish(authenticated_client, [
+            {'position': 0, 'answer': 'Richtig'},
+            {'position': 1, 'answer': 'Falsch'},
+        ])
+
+        assert response.status_code == 302
+        assert '/review' in response.location
+        with authenticated_client.session_transaction() as sess:
+            assert sess['test_data'][1]['test_result'] == 'correct'
+            assert sess['test_data'][0]['test_result'] == 'wrong'
+            # The level moves when the result is saved, not when it is recorded
+            assert sess['test_data'][1]['score_status'] == 'Red-2'
+            assert sess['test_data'][0]['score_status'] == 'Red-1'
+            assert sess['order'] == []
+            assert 'round_id' not in sess
+
+    def test_finish_test_leaves_ungraded_terms_alone(self, authenticated_client, sample_test_data):
+        test_data = sample_test_data.copy()
+        test_data[1]['test_result'] = 'wrong'
+        _put_round(authenticated_client, test_data, [0, 1])
+
+        _finish(authenticated_client, [{'position': 0, 'answer': 'Richtig'}])
+
+        with authenticated_client.session_transaction() as sess:
+            assert sess['test_data'][0]['test_result'] == 'correct'
+            assert sess['test_data'][1]['test_result'] == 'wrong'
+
+    def test_finish_test_guest_mode(self, guest_client, sample_test_data):
+        _put_round(guest_client, sample_test_data, [0, 1])
+
+        response = _finish(guest_client, [{'position': 0, 'answer': 'Falsch'}])
+
+        assert '/review' in response.location
+        with guest_client.session_transaction() as sess:
+            assert sess['test_data'][0]['test_result'] == 'wrong'
+            assert sess['test_data'][0]['score_status'] == 'Red-1'
+
+    def test_finish_test_ignores_a_stale_round(self, authenticated_client, sample_test_data):
+        _put_round(authenticated_client, sample_test_data, [0, 1], round_id='round-2')
+
+        response = _finish(authenticated_client, [{'position': 0, 'answer': 'Richtig'}], round_id='round-1')
+
         assert response.status_code == 302
         assert '/test' in response.location
-        
         with authenticated_client.session_transaction() as sess:
-            assert 'test_data' in sess
-            assert len(sess['test_data']) == 2
-    
+            assert sess['test_data'][0]['test_result'] == 'skipped'
+            assert sess['order'] == [0, 1]
+
+    def test_finish_test_without_round_redirects(self, authenticated_client, sample_test_data):
+        _put_round(authenticated_client, sample_test_data, [])
+        response = _finish(authenticated_client, [], round_id='')
+        assert response.status_code == 302
+        assert '/test' in response.location
+
+    @pytest.mark.parametrize('answers', [
+        '[{"position": 5, "answer": "Richtig"}]',
+        '[{"position": -1, "answer": "Richtig"}]',
+        '[{"position": 0, "answer": "correct"}]',
+        '[{"position": 0}]',
+        '[1, 2]',
+        'not json',
+    ])
+    def test_finish_test_rejects_bad_answers(self, authenticated_client, sample_test_data, answers):
+        _put_round(authenticated_client, sample_test_data, [0, 1])
+
+        response = authenticated_client.post('/finish_test', data={'round_id': 'round-1', 'answers': answers})
+
+        assert response.status_code == 400
+        with authenticated_client.session_transaction() as sess:
+            assert sess['test_data'][0]['test_result'] == 'skipped'
+
+
+class TestTestSelected:
+    """Starting a test from rows ticked on the practice page."""
+
+    def test_practice_page_numbers_its_rows(self, authenticated_client, sample_vocab_database, mock_vocab_data):
+        mock_vocab_data(authenticated_client)
+
+        response = authenticated_client.post('/practice', data={'language': 'Latein', 'categories': 'Lektion 1'})
+        html = response.data.decode()
+
+        assert 'name="item-checkbox" value="0"' in html
+        assert 'name="item-checkbox" value="1"' in html
+        assert 'name="item-checkbox" value="2"' not in html
+        assert 'name="language" value="Latein"' in html
+        assert 'name="categories" value="Lektion 1"' in html
+
+    def test_test_selected(self, authenticated_client, sample_vocab_database, mock_vocab_data):
+        mock_vocab_data(authenticated_client)
+
+        response = authenticated_client.post('/test_selected', data={
+            'language': 'Latein',
+            'categories': 'Lektion 1',
+            'selected-items': '1,0',
+        }, follow_redirects=False)
+
+        assert response.status_code == 302
+        assert '/test' in response.location
+
+        with authenticated_client.session_transaction() as sess:
+            assert [item[COL_NAME_TERM] for item in sess['test_data']] == ['domus', 'templum']
+            assert sess['test_data'][0][COL_NAME_CATEGORY] == 'Lektion 1'
+            assert sess['round_id']
+
+    def test_test_selected_english_row(self, authenticated_client, sample_vocab_database, mock_vocab_data):
+        mock_vocab_data(authenticated_client)
+
+        authenticated_client.post('/test_selected', data={
+            'language': 'Englisch', 'categories': 'Unit 1', 'selected-items': '1',
+        })
+
+        with authenticated_client.session_transaction() as sess:
+            assert [item[COL_NAME_TERM] for item in sess['test_data']] == ['temple']
+
     def test_test_selected_empty_redirects(self, authenticated_client):
-        """Test that empty selection redirects to index."""
         response = authenticated_client.post('/test_selected', data={
             'selected-items': ''
         }, follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/' in response.location
 
+    @pytest.mark.parametrize('selected', ['2', '-1', 'domus|das Haus|Latein'])
+    def test_test_selected_rejects_bad_indices(self, authenticated_client, sample_vocab_database, mock_vocab_data, selected):
+        mock_vocab_data(authenticated_client)
+        response = authenticated_client.post('/test_selected', data={
+            'language': 'Latein', 'categories': 'Lektion 1', 'selected-items': selected,
+        })
+        assert response.status_code == 400
+
 
 class TestErrorReview:
-    """Test error review functionality."""
-    
+    """Another round over the wrong and skipped terms."""
+
     def test_test_errors(self, authenticated_client, sample_test_data):
-        """Test retesting wrong and skipped items."""
-        # Mark some as wrong, some as correct
         test_data = sample_test_data.copy()
-        test_data[0]['test_result'] = 'wrong'
-        test_data[1]['test_result'] = 'skipped'
-        
+        test_data[0]['test_result'] = 'skipped'
+        test_data[1]['test_result'] = 'wrong'
+        test_data.append(dict(test_data[0], Fremdsprache='puella', test_result='correct'))
+
         with authenticated_client.session_transaction() as sess:
             sess['test_data'] = test_data
-        
+
         response = authenticated_client.post('/test_errors', follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/test' in response.location
-        
+
         with authenticated_client.session_transaction() as sess:
-            # Order should contain indices of wrong and skipped
-            order = sess['order']
-            assert 0 in order  # wrong item
-            assert 1 in order  # skipped item
-            assert sess['current_position'] == 0
-    
+            # wrong first, then skipped; the correct one is not retested
+            assert sess['order'] == [1, 0]
+            assert sess['round_id']
+
     def test_test_errors_no_incomplete_redirects(self, authenticated_client, sample_test_data):
-        """Test that no incomplete items redirects to index."""
-        # Mark all as correct
         test_data = sample_test_data.copy()
         for item in test_data:
             item['test_result'] = 'correct'
-        
+
         with authenticated_client.session_transaction() as sess:
             sess['test_data'] = test_data
-        
+
         response = authenticated_client.post('/test_errors', follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/' in response.location
 
 
 class TestReview:
     """Test review page functionality."""
-    
+
     def test_review_page(self, authenticated_client, sample_test_data):
-        """Test review page displays test results."""
         test_data = sample_test_data.copy()
         test_data[0]['test_result'] = 'correct'
         test_data[1]['test_result'] = 'wrong'
-        
+
         with authenticated_client.session_transaction() as sess:
             sess['test_data'] = test_data
-        
+
         response = authenticated_client.get('/review')
-        
+
         assert response.status_code == 200
         assert b'domus' in response.data
         assert b'templum' in response.data
-    
-    def test_review_counts(self, authenticated_client, sample_test_data):
-        """Test that review page shows correct counts."""
+
+    def test_review_selects_rows_by_index(self, authenticated_client, sample_test_data):
         test_data = sample_test_data.copy()
         test_data[0]['test_result'] = 'correct'
         test_data[1]['test_result'] = 'wrong'
-        
-        # Add one more for skipped
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+
+        html = authenticated_client.get('/review').data.decode()
+
+        values = re.findall(r'name="selected-items"\s+value="([^"]*)"', html)
+        assert sorted(values) == ['0', '1']
+
+    def test_review_shows_the_level_the_save_will_give(self, authenticated_client, sample_test_data):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'   # Red-1 -> Red-2
+        test_data[1]['test_result'] = 'wrong'     # Red-2 -> Red-1
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+
+        html = authenticated_client.get('/review').data.decode()
+
+        assert 'level-badge level-red">2<' in html
+        assert 'level-badge level-red">1<' in html
+        with authenticated_client.session_transaction() as sess:
+            # a projection, not a transition
+            assert sess['test_data'][0]['score_status'] == 'Red-1'
+
+    def test_review_disables_saved_rows(self, authenticated_client, sample_test_data):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+        test_data[0]['saved'] = True
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+
+        html = authenticated_client.get('/review').data.decode()
+
+        assert 'Bereits gespeichert' in html
+        assert not re.search(r'<input[^>]*name="selected-items"', html)
+
+    def test_review_counts(self, authenticated_client, sample_test_data):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+        test_data[1]['test_result'] = 'wrong'
         test_data.append({
             'Fremdsprache': 'puella',
             'Deutsch': 'das Mädchen',
@@ -697,50 +758,49 @@ class TestReview:
             'score_date': None,
             'test_result': 'skipped'
         })
-        
+
         with authenticated_client.session_transaction() as sess:
             sess['test_data'] = test_data
-        
-        response = authenticated_client.get('/review')
-        data = response.data.decode()
-        
-        # Check for count indicators (exact format depends on template)
-        assert '1' in data  # At least 1 correct
-        assert '1' in data  # At least 1 wrong
-    
+
+        html = authenticated_client.get('/review').data.decode()
+
+        assert '1 Richtig' in html
+        assert '1 Falsch' in html
+        assert '1 Übersprungen' in html
+        assert '3 Gesamt' in html
+
     def test_review_no_data_redirects(self, authenticated_client):
-        """Test that review without test data redirects."""
         response = authenticated_client.get('/review', follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/' in response.location
 
 
 class TestWriteScores:
-    """Test score writing functionality."""
-    
+    """Saving: the one place where a result becomes a level."""
+
     @patch('app.write_scores_to_sheet')
-    def test_write_scores_authenticated(self, mock_write, authenticated_client, sample_test_data):
-        """Test writing scores in authenticated mode."""
+    def test_write_scores_applies_the_level_transition(self, mock_write, authenticated_client, sample_test_data):
         test_data = sample_test_data.copy()
-        test_data[0]['test_result'] = 'correct'
-        test_data[1]['test_result'] = 'wrong'
-        
+        test_data[0]['test_result'] = 'correct'   # Red-1, never tested
+        test_data[1]['test_result'] = 'wrong'     # Red-2, yesterday
+
         with authenticated_client.session_transaction() as sess:
             sess['test_data'] = test_data
-        
+
         mock_write.return_value = 2
-        
+
         response = authenticated_client.post('/write_scores', data={
             'action': 'save'
         }, follow_redirects=False)
 
         assert response.status_code == 302
-        assert mock_write.called
+        written = {item[COL_NAME_TERM]: item['score_status'] for item in mock_write.call_args.args[0]}
+        assert written == {'domus': 'Red-2', 'templum': 'Red-1'}
+        assert mock_write.call_args.args[1] == 'Latein'
 
     @patch('app.write_scores_to_sheet')
     def test_write_scores_uses_session_user(self, mock_write, authenticated_client, sample_test_data):
-        """Test that scores are written to the sheet of the logged-in user."""
         test_data = sample_test_data.copy()
         test_data[0]['test_result'] = 'correct'
 
@@ -753,41 +813,150 @@ class TestWriteScores:
         assert mock_write.call_args.args[2] == 'Bob'
 
     def test_write_scores_guest_mode_redirects(self, guest_client, sample_test_data):
-        """Test that guest mode cannot write scores."""
         with guest_client.session_transaction() as sess:
             sess['test_data'] = sample_test_data
-        
+
         response = guest_client.post('/write_scores', data={
             'action': 'save'
         }, follow_redirects=False)
-        
+
         assert response.status_code == 302
         assert '/' in response.location
-    
+
     @patch('app.write_scores_to_sheet')
     def test_write_scores_selected_items(self, mock_write, authenticated_client, sample_test_data):
-        """Test writing scores for selected items only."""
         test_data = sample_test_data.copy()
         test_data[0]['test_result'] = 'correct'
         test_data[1]['test_result'] = 'wrong'
-        
+
         with authenticated_client.session_transaction() as sess:
             sess['test_data'] = test_data
-        
+
         mock_write.return_value = 1
-        
-        # Only select first item
+
         response = authenticated_client.post('/write_scores', data={
             'action': 'save',
-            'selected-items': ['domus|das Haus|Latein']
+            'selected-items': ['1']
         }, follow_redirects=False)
-        
+
         assert response.status_code == 302
-        
-        # Should only write selected items
-        call_args = mock_write.call_args[0]
-        items_written = call_args[0]
-        assert len(items_written) == 1
+        items_written = mock_write.call_args.args[0]
+        assert [item[COL_NAME_TERM] for item in items_written] == ['templum']
+
+    @patch('app.write_scores_to_sheet')
+    def test_write_scores_updates_session_and_saves_once(self, mock_write, authenticated_client,
+                                                         sample_test_data, sample_vocab_database, sample_vocab_terms):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+            sess['vocab_data'] = sample_vocab_database
+
+        authenticated_client.post('/write_scores', data={'action': 'save'})
+
+        with authenticated_client.session_transaction() as sess:
+            item = sess['test_data'][0]
+            assert item['score_status'] == 'Red-2'
+            assert item['score_date'] == date.today().isoformat()
+            assert item['saved'] is True
+            assert sess['vocab_data'].get_score(sample_vocab_terms[0]).status == 'Red-2'
+
+        # Saving again writes nothing: the result is already in the sheet
+        mock_write.reset_mock()
+        response = authenticated_client.post('/write_scores', data={'action': 'save'}, follow_redirects=False)
+        assert response.status_code == 302
+        assert not mock_write.called
+
+    @patch('app.write_scores_to_sheet')
+    def test_write_scores_keeps_session_when_the_sheet_fails(self, mock_write, authenticated_client, sample_test_data):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+        mock_write.side_effect = RuntimeError('quota')
+
+        response = authenticated_client.post('/write_scores', data={'action': 'save'}, follow_redirects=False)
+
+        assert response.status_code == 302
+        with authenticated_client.session_transaction() as sess:
+            assert sess['test_data'][0]['score_status'] == 'Red-1'
+            assert 'saved' not in sess['test_data'][0]
+
+    @pytest.mark.parametrize('selected', ['7', '-1', 'domus|das Haus|Latein'])
+    def test_write_scores_rejects_bad_indices(self, authenticated_client, sample_test_data, selected):
+        test_data = sample_test_data.copy()
+        test_data[0]['test_result'] = 'correct'
+        with authenticated_client.session_transaction() as sess:
+            sess['test_data'] = test_data
+
+        response = authenticated_client.post('/write_scores', data={'action': 'save', 'selected-items': [selected]})
+
+        assert response.status_code == 400
+
+
+class TestRoundFlow:
+    """A whole round through the real routes, the way the browser drives them."""
+
+    def _play(self, client, answer_for):
+        """GET the round, grade every position with answer_for(term), POST the result."""
+        response = client.get('/test')
+        assert response.status_code == 200
+        round_data = _round_data(response)
+        answers = [{'position': position, 'answer': answer_for(item['term'])}
+                   for position, item in enumerate(round_data['items'])
+                   if answer_for(item['term']) is not None]
+        response = client.post('/finish_test', data={
+            'round_id': round_data['id'], 'answers': json.dumps(answers)
+        }, follow_redirects=False)
+        assert '/review' in response.location
+        return round_data
+
+    @patch('app.write_scores_to_sheet')
+    def test_retest_after_wrong_answer_grades_the_final_result_once(
+            self, mock_write, authenticated_client, sample_vocab_database, mock_vocab_data):
+        mock_vocab_data(authenticated_client)
+        authenticated_client.post('/start_test', data={'language': 'Latein', 'categories': 'Lektion 1'})
+
+        # Round 1: templum (Red-2, yesterday) wrong, domus skipped
+        self._play(authenticated_client, lambda term: 'Falsch' if term == 'templum' else None)
+        with authenticated_client.session_transaction() as sess:
+            results = {item[COL_NAME_TERM]: item['test_result'] for item in sess['test_data']}
+            assert results == {'domus': 'skipped', 'templum': 'wrong'}
+
+        # Round 2 over the incomplete terms: both right
+        response = authenticated_client.post('/test_errors', follow_redirects=False)
+        assert '/test' in response.location
+        round_data = self._play(authenticated_client, lambda term: 'Richtig')
+        assert [item['term'] for item in round_data['items']] == ['templum', 'domus']  # wrong first
+        assert round_data['items'][0]['result'] == 'wrong'
+
+        # Save: templum is graded once, on its final result, against its original Red-2.
+        # The old code demoted it to Red-1 after round 1 and then promoted that
+        # Red-1 to Red-2 after round 2, whatever level it had started from.
+        authenticated_client.post('/write_scores', data={'action': 'save'})
+        written = {item[COL_NAME_TERM]: item['score_status'] for item in mock_write.call_args.args[0]}
+        assert written == {'domus': 'Red-2', 'templum': 'Red-3'}
+
+    @patch('app.write_scores_to_sheet')
+    def test_round_in_guest_mode(self, mock_write, guest_client, sample_vocab_database, mock_vocab_data):
+        mock_vocab_data(guest_client)
+        guest_client.post('/start_test', data={'language': 'Englisch', 'categories': 'Unit 1'})
+
+        response = guest_client.get('/test')
+        assert 'class="status-info"' not in response.data.decode()
+        # Guests get every term, urgency or not: temple is Green and not due
+        round_data = self._play(guest_client, lambda term: 'Richtig' if term == 'house' else 'Falsch')
+        assert sorted(item['term'] for item in round_data['items']) == ['house', 'temple']
+
+        html = guest_client.get('/review').data.decode()
+        assert '1 Richtig' in html and '1 Falsch' in html
+        assert not re.search(r'<input[^>]*name="selected-items"', html)
+
+        response = guest_client.post('/write_scores', data={'action': 'save'}, follow_redirects=False)
+        assert response.status_code == 302
+        assert not mock_write.called
+        with guest_client.session_transaction() as sess:
+            assert {item['score_status'] for item in sess['test_data']} == {'Yellow-1', 'Green'}
 
 
 class TestUtilityFunctions:

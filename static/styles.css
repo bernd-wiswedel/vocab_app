@@ -330,7 +330,6 @@ a:hover {
     cursor: pointer; /* Change cursor to pointer */
 }
 
-/* A guarded form has its navigation in flight (see templates/test.html). */
 button:disabled {
     opacity: 0.55;
     cursor: default;

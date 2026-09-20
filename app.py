@@ -1,11 +1,12 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, abort
 import pandas as pd
 import random
 import json
 import os
+import secrets
 import tempfile
 from datetime import timedelta
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 from google_sheet_io import fetch_data, write_scores_to_sheet, COL_NAME_TERM, COL_NAME_COMMENT, COL_NAME_TRANSLATION, COL_NAME_CATEGORY, COL_NAME_LANGUAGE, VocabularyDatabase, VocabularyTerm, VocabularyScore, USERS
 from config import LEARNERS
 from level import LevelSystem, RED_1_LOW_URGENCY, NOT_EXPIRED_LOW_URGENCY
@@ -320,23 +321,21 @@ def api_fetch_data():
 @require_auth
 def practice():
     selected_language = request.form['language']
-    selected_categories = [category for category in request.form['categories'].split(',')]
-
-    vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
-    
-    # Get filtered data using the new database methods
-    filtered_items = []
-    for category in selected_categories:
-        category_items = vocab_db.get_by_category(selected_language, category)
-        filtered_items.extend(category_items)
-    
-    # Convert to dict format for backward compatibility
+    selected_categories = request.form['categories']
+    filtered_items = _practice_rows(get_vocab_data(), selected_language, selected_categories)
     filtered_data = _convert_vocab_tuples_to_dict(filtered_items)
-    
-    # Remove 'Unnamed' keys (though this shouldn't be needed with the new structure)
-    filtered_data = [{key: value for key, value in item.items() if not key.startswith('Unnamed')} for item in filtered_data] 
+    return _practice_on(filtered_data, selected_language, selected_categories, "Üben")
 
-    return _practice_on(filtered_data, selected_language, "Üben")
+def _practice_rows(vocab_db: VocabularyDatabase, language: str, categories: str) -> List[Tuple[VocabularyTerm, VocabularyScore]]:
+    """The rows of the practice page for a comma-separated category list, in page order.
+
+    /test_selected receives row indices from that page, so both routes have
+    to derive the list the same way.
+    """
+    rows = []
+    for category in dict.fromkeys(categories.split(',')):
+        rows.extend(vocab_db.get_by_category(language, category))
+    return rows
 
 @app.route('/review')
 @require_auth
@@ -350,15 +349,20 @@ def review():
     correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
     wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
     skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
+    guest_mode = session.get('guest_mode', False)
     
     # Categorize all test items
     wrong_items = []
     skipped_items = []
     correct_items = []
     
-    for item in test_data:
-        # Add status information to each item
-        item.update(_add_status_info_to_data(item))
+    for index, item in enumerate(test_data):
+        # The checkbox of a row names the term by this index
+        item = dict(item, test_index=index)
+        if not guest_mode:
+            # Show the level the term gets when this result is saved
+            status, score_date = _projected_score(item)
+            item.update(_add_status_info_to_data({'score_status': status, 'score_date': score_date}))
         
         result = item.get('test_result', 'skipped')
         if result == 'wrong':
@@ -381,7 +385,6 @@ def review():
     
     # Get language for header
     language = test_data[0].get(COL_NAME_LANGUAGE, 'Unknown') if test_data else 'Unknown'
-    guest_mode = session.get('guest_mode', False)
     
     return render_template(
         'review.html',
@@ -435,6 +438,22 @@ def _add_status_info_to_data(current_data: Dict[str, Any]) -> Dict[str, Any]:
     current_data['days_until_expire'] = days_until_expire
     return current_data
 
+def _projected_score(item: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    """Level and date the term gets when its test result is saved; unchanged for a skipped term.
+
+    A round records answers as facts and the level transition happens only
+    here, once, against the level the term had when the test started. A term
+    answered wrong and then right in a retest is therefore graded on its final
+    result instead of being demoted and re-promoted (which, with Red-1 having
+    min_days=0, gave every term a free Red-2).
+    """
+    status = item.get('score_status', 'Red-1')
+    score_date = item.get('score_date')
+    result = item.get('test_result')
+    if result not in ANSWERED_RESULTS or item.get('saved'):
+        return status, score_date
+    return LevelSystem.process_answer(status, result == 'correct', score_date)
+
 def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
     """
     Utility function to determine labels for term, translation, and language based on the given language
@@ -464,7 +483,7 @@ def _get_language_labels(language: str, show_term: bool) -> Dict[str, Any]:
         'label_term': label_term
     }
     
-def _practice_on(filtered_data, selected_language, header, is_error_review=False):
+def _practice_on(filtered_data, selected_language, selected_categories, header, is_error_review=False):
     guest_mode = session.get('guest_mode', False)
     
     # Add status information to each item (but skip in guest mode)
@@ -493,6 +512,7 @@ def _practice_on(filtered_data, selected_language, header, is_error_review=False
         vocab_data=filtered_data_grouped,
         header=header,
         language=selected_language,
+        categories=selected_categories,
         col_name_term=COL_NAME_TERM,
         col_name_comment=COL_NAME_COMMENT,  # Always show comment column
         col_name_translation=COL_NAME_TRANSLATION,
@@ -503,55 +523,47 @@ def _practice_on(filtered_data, selected_language, header, is_error_review=False
 def random_order(length: int) -> List[int]:
     return random.sample(range(length), length)
 
+# What the browser sends for an answer, and the test_result it stands for
+ANSWER_RESULTS = {'Richtig': 'correct', 'Falsch': 'wrong'}
+ANSWERED_RESULTS = frozenset(ANSWER_RESULTS.values())
+
+def _begin_round(test_data: List[Dict[str, Any]], order: List[int]) -> None:
+    """Store a round: the terms and the order in which /test hands them to the browser."""
+    session['test_data'] = test_data
+    session['order'] = order
+    # Positions in a /finish_test submission only mean something against the
+    # order they were generated for, so the browser has to send this id back.
+    session['round_id'] = secrets.token_hex(8)
+
+def _end_round() -> None:
+    """A round is in progress exactly while 'order' is non-empty."""
+    session['order'] = []
+    session.pop('round_id', None)
+
+def _new_test_data(items: List[Tuple[VocabularyTerm, VocabularyScore]]) -> List[Dict[str, Any]]:
+    test_data = _convert_vocab_tuples_to_dict(items)
+    for term in test_data:
+        term['test_result'] = 'skipped'
+    return test_data
+
 
 @app.route('/test_selected', methods=['POST'])
 @require_auth
 def test_selected():
-    """Start a test with selected items from the practice page"""
-    selected_items_str = request.form.get('selected-items', '')
-    if not selected_items_str:
+    """Start a test with the rows ticked on the practice page, given as indices into that page"""
+    selected = request.form.get('selected-items', '')
+    if not selected:
         return redirect(url_for('index'))
-    
-    # Parse selected items (format: "term|translation|language" separated by ||)
-    selected_items = selected_items_str.split('||')
-    selected_set = set()
-    for item_str in selected_items:
-        parts = item_str.split('|')
-        if len(parts) == 3:
-            selected_set.add((parts[0], parts[1], parts[2]))
-    
-    if not selected_set:
-        return redirect(url_for('index'))
-    
-    # Get vocabulary database and filter to selected items
-    vocab_db = get_vocab_data()
-    
-    # Convert selected set to list of vocab items
-    testable_items = []
-    for term, translation, language in selected_set:
-        # Find the full term data from database directly
-        for db_term, db_score in vocab_db.data.items():
-            if (db_term.term == term and 
-                db_term.translation == translation and 
-                db_term.language == language):
-                testable_items.append((db_term, db_score))
-                break
-    
-    if not testable_items:
-        return redirect(url_for('index'))
-    
-    # Convert to dict format and add test_result field
-    testable_terms = _convert_vocab_tuples_to_dict(testable_items)
-    
-    # Initialize all terms as "skipped" (default state)
-    for term in testable_terms:
-        term['test_result'] = 'skipped'
-    
-    session['test_data'] = testable_terms
-    session['order'] = random_order(len(testable_terms))
-    session['current_position'] = 0
-    session['show_term'] = True
-    
+    rows = _practice_rows(get_vocab_data(), request.form.get('language', ''), request.form.get('categories', ''))
+    try:
+        indices = sorted({int(index) for index in selected.split(',')})
+    except ValueError:
+        abort(400)
+    if any(not 0 <= index < len(rows) for index in indices):
+        abort(400)
+
+    test_data = _new_test_data([rows[index] for index in indices])
+    _begin_round(test_data, random_order(len(test_data)))
     return redirect(url_for('test'))
 
 @app.route('/start_test', methods=['POST'])
@@ -559,319 +571,121 @@ def test_selected():
 def start_test():
     selected_language = request.form['language']
     selected_categories = [category for category in request.form['categories'].split(',')]
-    vocab_db = get_vocab_data()  # Now returns VocabularyDatabase
+    vocab_db = get_vocab_data()
     guest_mode = session.get('guest_mode', False)
     
-    # Use the new database method to get filtered and testable terms
     testable_items = []
     for category in selected_categories:
         category_items = vocab_db.get_testable_terms(language=selected_language, category=category, guest_mode=guest_mode)
         testable_items.extend(category_items)
     
-    # Convert to dict format and add test_result field to each term
-    testable_terms = _convert_vocab_tuples_to_dict(testable_items)
-    
-    # Initialize all terms as "skipped" (default state)
-    for term in testable_terms:
-        term['test_result'] = 'skipped'
-    
-    if not testable_terms:
+    if not testable_items:
         # No terms available for testing - redirect back with message
         # TODO: Add flash message support for user feedback
         return redirect(url_for('index'))
     
-    session['test_data'] = testable_terms
-    session['order'] = random_order(len(testable_terms))
-    session['current_position'] = 0  # Track position in order array
-    session['show_term'] = True
-
+    test_data = _new_test_data(testable_items)
+    _begin_round(test_data, random_order(len(test_data)))
     return redirect(url_for('test'))
 
 @app.route('/test_errors', methods=['POST'])
 @require_auth
 def test_errors():
+    """Start another round over the terms of this test that are wrong or skipped, wrong first"""
     test_data = session.get('test_data', [])
     if not test_data:
         return redirect(url_for('index'))
     
-    # Find indices of wrong and skipped terms in the original test_data
     wrong_indices = [i for i, term in enumerate(test_data) if term.get('test_result') == 'wrong']
     skipped_indices = [i for i, term in enumerate(test_data) if term.get('test_result') == 'skipped']
     
     if not wrong_indices and not skipped_indices:
         return redirect(url_for('index'))
     
-    # Shuffle each group before merging (wrong first, then skipped)
     random.shuffle(wrong_indices)
     random.shuffle(skipped_indices)
-    
-    # Create new order with just the incomplete term indices (wrong first, then skipped)
-    session['order'] = wrong_indices + skipped_indices
-    session['current_position'] = 0
-    session['show_term'] = True
-    # Keep the same test_data - no replacement needed!
-
+    _begin_round(test_data, wrong_indices + skipped_indices)
     return redirect(url_for('test'))
-
-def _get_position_in_test() -> int:
-    """Get the index in test_data of the next term to show, or -1 if no more terms"""
-    test_data = session.get('test_data', [])
-    order = session.get('order', [])
-    current_position = session.get('current_position', 0)
-    
-    # Find next term that hasn't been answered correctly
-    while current_position < len(order):
-        index = order[current_position]
-        term = test_data[index]
-        
-        # If term is not correct, we should show it
-        if term.get('test_result') != 'correct':
-            return index
-            
-        current_position += 1
-    
-    return -1  # No more terms to show
 
 @app.route('/test')
 @require_auth
 def test():
-    if not session.get('test_data'):
+    """Hand the whole round to the browser, which runs it and reports back to /finish_test"""
+    test_data = session.get('test_data')
+    if not test_data:
         return redirect(url_for('index'))
-
-    position = _get_position_in_test()
-    
-    # If no more terms to show, redirect to review
-    if position == -1:
+    order = session.get('order', [])
+    round_id = session.get('round_id')
+    if not order or not round_id:
         return redirect(url_for('review'))
-    
-    current_data = session['test_data'][position]
-    language = current_data[COL_NAME_LANGUAGE]
-    show_term = session.get('show_term', True)
+    guest_mode = session.get('guest_mode', False)
 
-    # Create minimal copy with only required fields for template
-    minimal_current_data = {
-        COL_NAME_TERM: current_data[COL_NAME_TERM],
-        COL_NAME_TRANSLATION: current_data[COL_NAME_TRANSLATION], 
-        COL_NAME_COMMENT: current_data.get(COL_NAME_COMMENT, ''),
-        COL_NAME_LANGUAGE: current_data[COL_NAME_LANGUAGE],
-        'score_status': current_data.get('score_status', 'Red-1'),
-        'score_date': current_data.get('score_date')
+    round_items = [test_data[index] for index in order]
+    languages = {item[COL_NAME_LANGUAGE] for item in round_items}
+    # The progress counters cover the whole test, so terms outside this
+    # round (already correct in an earlier round) go in as a base count.
+    in_round = set(order)
+    outside = [item for index, item in enumerate(test_data) if index not in in_round]
+    round_data = {
+        'id': round_id,
+        'items': [{
+            'term': item[COL_NAME_TERM],
+            'translation': item[COL_NAME_TRANSLATION],
+            'comment': item.get(COL_NAME_COMMENT, ''),
+            'language': item[COL_NAME_LANGUAGE],
+            'result': item.get('test_result', 'skipped'),
+        } for item in round_items],
+        # [asked side is the term, asked side is the translation], per language
+        'labels': {language: [_get_language_labels(language, True), _get_language_labels(language, False)]
+                   for language in languages},
+        'base': {
+            'correct': sum(1 for item in outside if item.get('test_result') == 'correct'),
+            'wrong': sum(1 for item in outside if item.get('test_result') == 'wrong'),
+        },
     }
-
-    # Use the utility function to get the labels and comment visibility
-    labels = _get_language_labels(language, show_term)
-
-    # Add status info to minimal_current_data
-    minimal_current_data = _add_status_info_to_data(minimal_current_data)
-
-    # Calculate progress information based on current position in order
-    order = session.get('order', [])
-    current_position = session.get('current_position', 0)
-    total_terms = len(order)
-    completed_terms = current_position
-    progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
-    
-    # Also calculate counts for display
-    test_data = session['test_data']
-    correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
-    wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
-    skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
-    guest_mode = session.get('guest_mode', False)
+    # One rendered status line per position; the browser shows the current one
+    status_items = [] if guest_mode else [
+        _add_status_info_to_data({'score_status': item.get('score_status', 'Red-1'), 'score_date': item.get('score_date')})
+        for item in round_items
+    ]
 
     return render_template(
         'test.html',
-        current_data=minimal_current_data,
-        term_key=COL_NAME_TERM,
-        language_key=COL_NAME_LANGUAGE,
-        comment_key=COL_NAME_COMMENT,
-        translation_key=COL_NAME_TRANSLATION,
-        correct_count=correct_count,
-        wrong_count=wrong_count,
-        skipped_count=skipped_count,
-        total_terms=total_terms,
-        completed_terms=completed_terms,
-        progress_percentage=progress_percentage,
-        show_translation=False,
-        show_term=show_term,
-        label_language=labels['label_language'],
-        label_translation=labels['label_translation'],
-        label_term=labels['label_term'],
+        round_data=round_data,
+        status_items=status_items,
         guest_mode=guest_mode
     )
 
-@app.route('/show_translation', methods=['POST'])
+@app.route('/finish_test', methods=['POST'])
 @require_auth
-def show_translation():
-    current_data_str = request.form['current_data']
-    current_data = json.loads(current_data_str)
+def finish_test():
+    """Record the round's answers: which positions were graded, and whether right or wrong.
 
-    language = current_data[COL_NAME_LANGUAGE]
-    show_term = session.get('show_term', True)
-
-    # Use the utility function to get the labels and comment visibility
-    labels = _get_language_labels(language, show_term)
-
-    # Calculate progress information based on current position in order
+    Level transitions are not applied here; see _projected_score.
+    """
+    test_data = session.get('test_data')
+    if not test_data:
+        return redirect(url_for('index'))
     order = session.get('order', [])
-    current_position = session.get('current_position', 0)
-    total_terms = len(order)
-    completed_terms = current_position
-    progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
-    
-    # Also calculate counts for display
-    test_data = session.get('test_data', [])
-    correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
-    wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
-    skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
-    guest_mode = session.get('guest_mode', False)
+    if not order or request.form.get('round_id') != session.get('round_id'):
+        # No round in progress, or a stale tab reporting on an earlier round
+        return redirect(url_for('test'))
 
-    return render_template(
-        'test.html',
-        current_data=current_data,
-        term_key=COL_NAME_TERM,
-        language_key=COL_NAME_LANGUAGE,
-        comment_key=COL_NAME_COMMENT,
-        translation_key=COL_NAME_TRANSLATION,
-        correct_count=correct_count,
-        wrong_count=wrong_count,
-        skipped_count=skipped_count,
-        total_terms=total_terms,
-        completed_terms=completed_terms,
-        progress_percentage=progress_percentage,
-        show_translation=True,
-        show_term=show_term,
-        label_language=labels['label_language'],
-        label_translation=labels['label_translation'],
-        label_term=labels['label_term'],
-        guest_mode=guest_mode
-    )
+    try:
+        answers = json.loads(request.form.get('answers', '[]'))
+        graded = [(int(answer['position']), ANSWER_RESULTS[answer['answer']]) for answer in answers]
+    except (ValueError, TypeError, KeyError):
+        abort(400)
+    if any(not 0 <= position < len(order) for position, _ in graded):
+        abort(400)
 
-@app.route('/check_answer', methods=['POST'])
-@require_auth
-def check_answer():
-    """Handle the user's response during testing with level system progression."""
-    # Get current position to identify the term being answered
-    position = _get_position_in_test()
-    if position == -1:
-        # No more terms, redirect to review
-        return redirect(url_for('review'))
-    
-    # Get the current term data directly by position
-    current_data = session['test_data'][position]
-
-    answer_correct = request.form['answer_correct'] == 'Richtig'
-    guest_mode = session.get('guest_mode', False)
-    
-    # Update test result in the term
-    if answer_correct:
-        session['test_data'][position]['test_result'] = 'correct'
-    else:
-        session['test_data'][position]['test_result'] = 'wrong'
-    
-    # Only update levels and scores in non-guest mode
-    if not guest_mode:
-        # Get current level information
-        current_level = current_data.get('score_status', 'Red-1')
-        last_test_date = current_data.get('score_date')
-        
-        # Process the answer through the level system
-        new_level, new_date = LevelSystem.process_answer(current_level, answer_correct, last_test_date)
-        
-        # Update the item in session data using direct position access
-        session['test_data'][position]['score_status'] = new_level
-        session['test_data'][position]['score_date'] = new_date
-        
-        # Update in vocab_data if it exists in session
-        vocab_db = session.get('vocab_data')
-        if vocab_db:
-            # Create temporary VocabularyTerm for direct lookup
-            temp_vocab_term = VocabularyTerm(
-                term=current_data.get(COL_NAME_TERM),
-                translation=current_data.get(COL_NAME_TRANSLATION),
-                language=current_data.get(COL_NAME_LANGUAGE),
-                category=current_data.get(COL_NAME_CATEGORY),
-                comment=current_data.get(COL_NAME_COMMENT, '')
-            )
-            
-            # Direct lookup using the VocabularyTerm as key
-            vocab_score = vocab_db.get_score(temp_vocab_term)
-            if vocab_score:
-                vocab_db.update_score(temp_vocab_term, new_level, new_date)
-
-    # Advance position to next unanswered term
-    session['current_position'] = session.get('current_position', 0) + 1
-
-    return redirect(url_for('test'))
-
-@app.route('/switch_direction', methods=['POST'])
-@require_auth
-def switch_direction():
-    current_data_str = request.form['current_data']
-    current_data = json.loads(current_data_str)
-
-    # Toggle the direction (show term or show translation)
-    session['show_term'] = not session.get('show_term', True)
-    show_term = session['show_term']
-
-    language = current_data[COL_NAME_LANGUAGE]
-
-    # Use the utility function to get the labels and comment visibility
-    labels = _get_language_labels(language, show_term)
-
-    # Add status info to current_data
-    current_data = _add_status_info_to_data(current_data)
-
-    # Calculate progress information based on current position in order (same as in test route)
-    order = session.get('order', [])
-    current_position = session.get('current_position', 0)
-    total_terms = len(order)
-    completed_terms = current_position
-    progress_percentage = int((completed_terms / total_terms) * 100) if total_terms > 0 else 0
-    
-    # Also calculate counts for display
-    test_data = session.get('test_data', [])
-    correct_count = sum(1 for term in test_data if term.get('test_result') == 'correct')
-    wrong_count = sum(1 for term in test_data if term.get('test_result') == 'wrong')
-    skipped_count = sum(1 for term in test_data if term.get('test_result') == 'skipped')
-
-    guest_mode = session.get('guest_mode', False)
-
-    return render_template(
-        'test.html',
-        current_data=current_data,
-        term_key=COL_NAME_TERM,
-        language_key=COL_NAME_LANGUAGE,
-        comment_key=COL_NAME_COMMENT,
-        translation_key=COL_NAME_TRANSLATION,
-        correct_count=correct_count,
-        wrong_count=wrong_count,
-        skipped_count=skipped_count,
-        total_terms=total_terms,
-        completed_terms=completed_terms,
-        progress_percentage=progress_percentage,
-        show_translation=False,
-        show_term=show_term,
-        label_language=labels['label_language'],
-        label_translation=labels['label_translation'],
-        label_term=labels['label_term'],
-        guest_mode=guest_mode
-    )
-
-@app.route('/skip_question', methods=['POST'])
-@require_auth
-def skip_question():
-    """Skip current question and mark it as skipped without changing score"""
-    # Get current position to identify the term being skipped
-    position = _get_position_in_test()
-    if position == -1:
-        # No more terms, redirect to review
-        return redirect(url_for('review'))
-    
-    # The term retains its 'skipped' test_result (no change needed)
-    # Just advance position to next unanswered term
-    session['current_position'] = session.get('current_position', 0) + 1
-    
-    return redirect(url_for('test'))
+    for position, result in graded:
+        item = test_data[order[position]]
+        item['test_result'] = result
+        item.pop('saved', None)  # a new answer, not yet written to the sheet
+    session.modified = True
+    _end_round()
+    return redirect(url_for('review'))
 
 @app.route('/write_scores', methods=['POST'])
 @require_auth
@@ -892,63 +706,55 @@ def write_scores():
     if not test_data:
         return redirect(url_for('index'))
 
+    # The review page names the selected rows by their index into test_data;
+    # no selection means every answered term (backward compatibility).
     try:
-        # Get selected items from form data
-        selected_items = request.form.getlist('selected-items')
-        
-        if selected_items:
-            # Parse selected items (format: "term|translation|language")
-            selected_set = set()
-            for item_str in selected_items:
-                parts = item_str.split('|')
-                if len(parts) == 3:
-                    selected_set.add((parts[0], parts[1], parts[2]))
-            
-            # Filter test_data to only include selected items
-            answered_items = []
-            for item in test_data:
-                if item.get('test_result') not in ['correct', 'wrong']:
-                    continue
-                    
-                item_key = (
-                    item.get(COL_NAME_TERM, ''),
-                    item.get(COL_NAME_TRANSLATION, ''),
-                    item.get(COL_NAME_LANGUAGE, '')
-                )
-                
-                if item_key in selected_set:
-                    answered_items.append(item)
-        else:
-            # No selection provided, use all answered items (backward compatibility)
-            answered_items = [
-                item for item in test_data 
-                if item.get('test_result') in ['correct', 'wrong']
-            ]
-        
-        if not answered_items:
-            return redirect(url_for('index'))
-        
-        # Group items by language
-        items_by_language = {}
-        for item in answered_items:
-            language = item.get(COL_NAME_LANGUAGE, 'Englisch')
-            if language not in items_by_language:
-                items_by_language[language] = []
-            items_by_language[language].append(item)
-        
-        # Write scores for each language in a single batch
-        total_rows_written = 0
-        for language, items in items_by_language.items():
-            rows_written = write_scores_to_sheet(items, language, current_user())
-            total_rows_written += rows_written
-        
-        # Redirect back to index after successful write
+        selected = sorted({int(index) for index in request.form.getlist('selected-items')})
+    except ValueError:
+        abort(400)
+    if any(not 0 <= index < len(test_data) for index in selected):
+        abort(400)
+    if not selected:
+        selected = range(len(test_data))
+    answered_items = [test_data[index] for index in selected
+                      if test_data[index].get('test_result') in ANSWERED_RESULTS and not test_data[index].get('saved')]
+    if not answered_items:
         return redirect(url_for('index'))
-        
+
+    # The level transition happens here, once per term (see _projected_score)
+    saved_by_language: Dict[str, List[Tuple[Dict[str, Any], str, Optional[str]]]] = {}
+    for item in answered_items:
+        status, score_date = _projected_score(item)
+        saved_by_language.setdefault(item.get(COL_NAME_LANGUAGE, 'Englisch'), []).append((item, status, score_date))
+
+    vocab_db = session.get('vocab_data')
+    try:
+        for language, saved in saved_by_language.items():
+            write_scores_to_sheet([dict(item, score_status=status, score_date=score_date) for item, status, score_date in saved],
+                                  language, current_user())
+            # What the sheet now says becomes the session's truth as well, so
+            # another round or save in this session starts from it.
+            for item, status, score_date in saved:
+                item['score_status'] = status
+                item['score_date'] = score_date
+                item['saved'] = True
+                if vocab_db is not None:
+                    vocab_db.update_score(_vocab_term_of(item), status, score_date)
     except Exception as e:
         # Handle errors gracefully - could add flash message here
         print(f"Error writing scores: {e}")
-        return redirect(url_for('index'))
+    session.modified = True
+    return redirect(url_for('index'))
+
+def _vocab_term_of(item: Dict[str, Any]) -> VocabularyTerm:
+    """The database key of a test_data entry; all five fields take part in the hash."""
+    return VocabularyTerm(
+        term=item.get(COL_NAME_TERM),
+        translation=item.get(COL_NAME_TRANSLATION),
+        language=item.get(COL_NAME_LANGUAGE),
+        category=item.get(COL_NAME_CATEGORY),
+        comment=item.get(COL_NAME_COMMENT, '')
+    )
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

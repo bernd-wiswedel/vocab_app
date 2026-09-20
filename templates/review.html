@@ -23,6 +23,7 @@
         function updateSaveButton() {
             const selectedItems = document.querySelectorAll('input[name="selected-items"]:checked');
             const saveButton = document.getElementById('save-button');
+            if (!saveButton) return;  // guests cannot save
             
             if (selectedItems.length > 0) {
                 saveButton.disabled = false;
@@ -123,10 +124,12 @@
                             </td>
                             {% if not guest_mode %}
                             <td class="selection-cell">
-                                {% if item.test_result in ['correct', 'wrong'] %}
-                                    <input type="checkbox" name="selected-items" 
-                                           value="{{ item[col_name_term] }}|{{ item[col_name_translation] }}|{{ language }}" 
-                                           checked 
+                                {% if item.saved %}
+                                    <input type="checkbox" disabled title="Bereits gespeichert">
+                                {% elif item.test_result in ['correct', 'wrong'] %}
+                                    <input type="checkbox" name="selected-items"
+                                           value="{{ item.test_index }}"
+                                           checked
                                            title="Zum Speichern auswählen">
                                 {% else %}
                                     <input type="checkbox" disabled title="Übersprungene Einträge können nicht gespeichert werden">

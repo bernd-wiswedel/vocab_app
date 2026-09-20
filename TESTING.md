@@ -240,11 +240,12 @@ VocabularyScore('Yellow-1', '2025-11-22')
 def test_session_data(authenticated_client):
     with authenticated_client.session_transaction() as sess:
         sess['test_data'] = sample_data
+        sess['order'] = [0, 1]
+        sess['round_id'] = 'round-1'
     
     response = authenticated_client.get('/test')
     
-    with authenticated_client.session_transaction() as sess:
-        assert sess['current_position'] == 0
+    assert response.status_code == 200
 ```
 
 ### 2. Mocking Google Sheets
