@@ -90,5 +90,50 @@
         </div>
     </div>
 
+    <script>
+        // Every button on this page is a full page navigation, and /check_answer
+        // identifies the answered term from the server-side cursor alone - it
+        // carries no reference to the term that was on screen. A second tap before
+        // the next page arrives therefore grades the *following*, unseen term.
+        // Guard every form here against that second submission.
+        (function () {
+            'use strict';
+
+            function buttons(form) {
+                return Array.prototype.slice.call(form.querySelectorAll('button'));
+            }
+
+            function guard(form) {
+                form.addEventListener('submit', function (event) {
+                    if (form.dataset.submitting === 'true') {
+                        event.preventDefault();
+                        return;
+                    }
+                    form.dataset.submitting = 'true';
+                    // Disabling the buttons here would drop the pressed button's
+                    // name/value from the request body, because disabled controls
+                    // are left out of the form data. So the flag above is what
+                    // actually prevents the double answer; this only greys the
+                    // buttons out once the submission is under way.
+                    setTimeout(function () {
+                        buttons(form).forEach(function (button) { button.disabled = true; });
+                    }, 0);
+                });
+            }
+
+            var forms = Array.prototype.slice.call(document.querySelectorAll('form'));
+            forms.forEach(guard);
+
+            // Going back reaches this page from the bfcache with the guard still
+            // armed and the buttons dead, so release it.
+            window.addEventListener('pageshow', function (event) {
+                if (!event.persisted) return;
+                forms.forEach(function (form) {
+                    delete form.dataset.submitting;
+                    buttons(form).forEach(function (button) { button.disabled = false; });
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
