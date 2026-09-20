@@ -75,6 +75,17 @@ class TestAuthentication:
         assert 'id="passwordToggle"' in html
         assert client.get('/static/favicon.svg').status_code == 200
 
+    def test_home_screen_icons_and_manifest(self, client):
+        """Test the PNG icons and manifest that tablets use for 'add to home screen'."""
+        html = client.get('/login').data.decode()
+        assert 'rel="apple-touch-icon"' in html
+        assert 'rel="manifest"' in html
+        for path in ('/static/apple-touch-icon.png', '/static/icon-192.png', '/static/icon-512.png'):
+            assert client.get(path).status_code == 200, path
+        manifest = json.loads(client.get('/static/manifest.webmanifest').data)
+        assert manifest['start_url'] == '/login'
+        assert {icon['sizes'] for icon in manifest['icons']} == {'192x192', '512x512'}
+
     def test_login_page_exposes_username_to_password_managers(self, client):
         """Test the hidden username mirror that lets browsers save one password per learner."""
         response = client.get('/login?user=Bob')
