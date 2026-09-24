@@ -912,7 +912,7 @@ class TestRoundFlow:
         return round_data
 
     @patch('app.write_scores_to_sheet')
-    def test_a_wrong_answer_stands_for_the_rest_of_the_test(
+    def test_retest_after_wrong_answer_grades_the_final_result_once(
             self, mock_write, authenticated_client, sample_vocab_database, mock_vocab_data):
         mock_vocab_data(authenticated_client)
         authenticated_client.post('/start_test', data={'language': 'Latein', 'categories': 'Lektion 1'})
@@ -930,36 +930,12 @@ class TestRoundFlow:
         assert [item['term'] for item in round_data['items']] == ['templum', 'domus']  # wrong first
         assert round_data['items'][0]['result'] == 'wrong'
 
-        # templum was still reported as wrong on the retest page, and grading it
-        # right there does not take that back
-        with authenticated_client.session_transaction() as sess:
-            results = {item[COL_NAME_TERM]: item['test_result'] for item in sess['test_data']}
-            assert results == {'domus': 'correct', 'templum': 'wrong'}
-
-        # Save: each term is graded once, against the level it started the test
-        # with. templum misses from Red-2, domus climbs one from Red-1.
+        # Save: templum is graded once, on its final result, against its original Red-2.
+        # The old code demoted it to Red-1 after round 1 and then promoted that
+        # Red-1 to Red-2 after round 2, whatever level it had started from.
         authenticated_client.post('/write_scores', data={'action': 'save'})
         written = {item[COL_NAME_TERM]: item['score_status'] for item in mock_write.call_args.args[0]}
-        assert written == {'domus': 'Red-2', 'templum': 'Red-1'}
-
-    @patch('app.write_scores_to_sheet')
-    def test_saving_lets_a_term_be_earned_back(
-            self, mock_write, authenticated_client, sample_vocab_database, mock_vocab_data):
-        """Stickiness lasts until the miss is on the sheet, not forever."""
-        mock_vocab_data(authenticated_client)
-        authenticated_client.post('/start_test', data={'language': 'Latein', 'categories': 'Lektion 1'})
-
-        self._play(authenticated_client, lambda term: 'Falsch' if term == 'templum' else None)
-        authenticated_client.post('/write_scores', data={'action': 'save'})
-        assert {item[COL_NAME_TERM]: item['score_status']
-                for item in mock_write.call_args.args[0]} == {'templum': 'Red-1'}
-
-        # Now that the sheet says Red-1, a correct retest counts again
-        authenticated_client.post('/test_errors')
-        self._play(authenticated_client, lambda term: 'Richtig')
-        authenticated_client.post('/write_scores', data={'action': 'save'})
-        assert {item[COL_NAME_TERM]: item['score_status']
-                for item in mock_write.call_args.args[0]} == {'templum': 'Red-2', 'domus': 'Red-2'}
+        assert written == {'domus': 'Red-2', 'templum': 'Red-3'}
 
     @patch('app.write_scores_to_sheet')
     def test_round_in_guest_mode(self, mock_write, guest_client, sample_vocab_database, mock_vocab_data):
