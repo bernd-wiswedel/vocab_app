@@ -7,6 +7,9 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+    # Skip releases younger than 3 days (supply-chain attacks); security updates are exempt
+    cooldown:
+      default-days: 3
     # Limit number of open PRs
     open-pull-requests-limit: 5
     # Ensure compatibility with Python version
