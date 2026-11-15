@@ -41,9 +41,10 @@ jobs:
         fail_ci_if_error: false
 
   browser:
-    # The test round runs in the browser, so this is the only job that covers
-    # asking, revealing, skipping, switching and grading. It needs no secrets:
-    # the Google Sheets boundary is faked inside the tests.
+    # The test round and the practice page's cover run in the browser, so this
+    # is the only job that covers asking, revealing, skipping, switching,
+    # grading and covering. It needs no secrets: the Google Sheets boundary is
+    # faked inside the tests.
     runs-on: ubuntu-latest
 
     steps:

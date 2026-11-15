@@ -72,6 +72,14 @@
         </table>
     </div>
     <div class="action-buttons">
+        <button type="button" id="cover-btn" class="range-mode-button" aria-pressed="false">
+            📄 Abdecken
+        </button>
+        <div id="cover-controls" class="cover-controls" hidden>
+            <button type="button" id="cover-back" class="cover-back" aria-label="Eine Zeile zurück">↑</button>
+            <span id="cover-progress" class="cover-progress"></span>
+            <button type="button" id="cover-next">Weiter ↓</button>
+        </div>
         <button type="button" id="range-mode-btn" onclick="toggleRangeMode()" class="range-mode-button">
             📏 Bereichsauswahl
         </button>
@@ -300,6 +308,113 @@
             } else {
                 init();
             }
+        })();
+
+        // ========================================
+        // Cover: blurs the rows below the current one, like a hand or a
+        // sheet of paper held over the table, so the page can be learned
+        // one row at a time. Purely in the browser; the position lives in
+        // sessionStorage, so a reload keeps it.
+        // ========================================
+        (function() {
+            'use strict';
+
+            // every practice page (language, categories, error review) has its own position
+            const STORAGE_KEY = {{ ('practice-cover:' ~ language ~ '|' ~ categories ~ '|' ~ (1 if is_error_review else 0)) | tojson }};
+
+            const rows = Array.from(document.querySelectorAll('.item-row'));
+            const toggle = document.getElementById('cover-btn');
+            const controls = document.getElementById('cover-controls');
+            const back = document.getElementById('cover-back');
+            const next = document.getElementById('cover-next');
+            const progress = document.getElementById('cover-progress');
+
+            if (rows.length === 0) {
+                toggle.hidden = true;
+                return;
+            }
+
+            const cover = load();
+
+            function load() {
+                try {
+                    const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY));
+                    if (saved && Number.isInteger(saved.position)) {
+                        return {active: saved.active === true, position: saved.position};
+                    }
+                } catch (e) {
+                    // no usable storage: start uncovered
+                }
+                return {active: false, position: 0};
+            }
+
+            function save() {
+                try {
+                    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cover));
+                } catch (e) {
+                    // private mode or blocked storage: the cover still works, it just won't survive a reload
+                }
+            }
+
+            function render(scroll) {
+                cover.position = Math.max(0, Math.min(cover.position, rows.length - 1));
+                rows.forEach((row, index) => {
+                    row.classList.toggle('covered', cover.active && index > cover.position);
+                });
+                toggle.classList.toggle('active', cover.active);
+                toggle.setAttribute('aria-pressed', String(cover.active));
+                controls.hidden = !cover.active;
+                progress.textContent = (cover.position + 1) + ' / ' + rows.length;
+                back.disabled = cover.position === 0;
+                next.disabled = cover.position === rows.length - 1;
+                if (scroll && cover.active) {
+                    rows[cover.position].scrollIntoView({block: 'nearest'});
+                }
+                save();
+            }
+
+            function move(delta) {
+                if (cover.active) {
+                    cover.position += delta;
+                    render(true);
+                }
+            }
+
+            toggle.addEventListener('click', () => {
+                cover.active = !cover.active;
+                render(true);
+            });
+            next.addEventListener('click', () => move(1));
+            back.addEventListener('click', () => move(-1));
+
+            // A tap on a covered row uncovers the next one. Capture phase, so the
+            // tap never reaches the row's checkbox and its selection handlers.
+            document.addEventListener('click', event => {
+                if (event.target.closest('.item-row.covered')) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    move(1);
+                }
+            }, true);
+
+            document.addEventListener('keydown', event => {
+                if (!cover.active || event.altKey || event.ctrlKey || event.metaKey) {
+                    return;
+                }
+                if (event.target.closest('input, select, textarea')) {
+                    return;
+                }
+                if (event.key === 'ArrowDown' || (event.key === ' ' && !event.target.closest('button'))) {
+                    // a focused button handles Space itself
+                    event.preventDefault();
+                    move(1);
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    move(-1);
+                }
+            });
+
+            render(false);
         })();
     </script>
 
