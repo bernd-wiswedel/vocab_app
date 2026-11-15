@@ -22,15 +22,16 @@ pip install -r requirements.txt -r requirements-dev.txt
 python app.py                            # dev server on 0.0.0.0:5000
 
 pytest -m "not slow and not browser"     # the normal test run (CI runs this)
-pytest -m browser                        # the round in a real browser (CI runs this too)
+pytest -m browser                        # the round and the practice cover in a real browser (CI too)
 pytest -m sheets                         # against the real Google Sheet — run by hand
 pytest tests/test_level.py::TestLevelSystem::test_is_expired_respects_max_days  # single test
 pytest --cov=level --cov=google_sheet_io --cov=app --cov-report=term-missing -m "not slow and not browser"
 ./run_tests.sh help                      # wrapper with presets (fast/unit/app/coverage/...)
 ```
 
-The markers matter. `browser` drives headless Chrome through Playwright and is the only cover the
-round's JavaScript has; it skips without a browser. `sheets` talks to the real Sheets API and is
+The markers matter. `browser` drives headless Chrome through Playwright and is the only test of the
+JavaScript in the round and in the practice page's cover; it skips without a browser (and Chrome
+aborts inside the Claude Code sandbox, so run it outside). `sheets` talks to the real Sheets API and is
 the only cover the Google boundary has — tab names, gids, the A:C layout, `values.batchUpdate`,
 auth; it skips without credentials.
 
@@ -145,6 +146,8 @@ considered for both modes.
 - `_add_status_info_to_data()` adds `current_status` / `days_until_retest` / `days_until_expire`;
   `templates/_status_display.html` is included by practice, test, and review and expects exactly
   those keys.
+- The practice page's "Abdecken" cover (blur every row below the current one) is browser-only:
+  its position lives in `sessionStorage`, keyed by language, categories and error review.
 - Selected rows travel through forms as indices, never as term strings: `/test_selected` gets
   comma-separated indices into the practice page's row list and re-derives that list with
   `_practice_rows()` from the `language` and `categories` fields the page carries along;

@@ -100,6 +100,44 @@ body {
     cursor: pointer;
 }
 
+/* Cover on the practice page: rows below the current one are blurred */
+.cover-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 10px;
+}
+
+.cover-controls[hidden] {
+    display: none;
+}
+
+.cover-progress {
+    font-size: 14px;
+    color: #555;
+    min-width: 4em;
+}
+
+.action-buttons .cover-back {
+    background-color: #6c757d;
+}
+
+.item-row.covered {
+    cursor: pointer;
+}
+
+.item-row.covered > td {
+    filter: blur(6px);
+    user-select: none;
+}
+
+/* Keep the row just uncovered above the sticky button bar, at a steady
+   reading line instead of at the very bottom of the screen. */
+.practice-table .item-row {
+    scroll-margin-top: 20px;
+    scroll-margin-bottom: 35vh;
+}
+
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     .range-selection-toolbar {
