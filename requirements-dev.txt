@@ -5,4 +5,4 @@ pytest-mock==3.17.0
 pytest-cov==7.1.0
 freezegun==1.5.5
 responses==0.26.3
-playwright==1.64.1
+playwright==1.65.2
